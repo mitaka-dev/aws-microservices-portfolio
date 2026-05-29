@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Session-end hook: commit-progress-marker
+#
+# Scans commits on this branch since main for phase references.
+# Warns if a referenced phase's checkbox is still [ ] in BUILD-PLAN.md.
+set -euo pipefail
+
+PLAN_FILE=""
+for candidate in "docs/plan/BUILD-PLAN.md" "build-plan.md" "BUILD-PLAN.md"; do
+  if [ -f "$candidate" ]; then
+    PLAN_FILE="$candidate"
+    break
+  fi
+done
+[ -z "$PLAN_FILE" ] && exit 0
+
+# Commits ahead of main on this branch
+COMMITS=$(git log main..HEAD --pretty=format:"%s" 2>/dev/null || true)
+[ -z "$COMMITS" ] && exit 0
+
+# Extract "phase N" or just "N" from commit subjects
+PHASE_IDS=$(echo "$COMMITS" | grep -ioE "(phase\s+)?[0-9]+" | \
+            grep -oE "[0-9]+" | sort -u || true)
+[ -z "$PHASE_IDS" ] && exit 0
+
+UNCHECKED=()
+for pid in $PHASE_IDS; do
+  if grep -A 3 -iE "^### Phase ${pid}\b" "$PLAN_FILE" 2>/dev/null | \
+     grep -qE "^\s*-\s*\[\s*\]"; then
+    UNCHECKED+=("$pid")
+  fi
+done
+
+[ ${#UNCHECKED[@]} -eq 0 ] && exit 0
+
+echo "" >&2
+echo "The following phases have branch commits but may not be marked done in $PLAN_FILE:" >&2
+for pid in "${UNCHECKED[@]}"; do
+  echo "  - Phase $pid" >&2
+done
+echo "" >&2
+echo "Check with: grep -n '\[ \]' $PLAN_FILE" >&2
+exit 0

@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: user-service
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/userdb
+    username: postgres
+    password: postgres
+  cloud:
+    aws:
+      secretsmanager:
+        enabled: false
+      region:
+        static: us-east-1
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: aws
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:userdb}
+  cloud:
+    aws:
+      secretsmanager:
+        enabled: true
+      region:
+        static: ${AWS_REGION:us-east-1}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}

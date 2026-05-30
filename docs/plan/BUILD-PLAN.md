@@ -283,7 +283,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 3 — First service on Fargate behind ALB
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** `user-service` deployed to ECS Fargate, behind ALB, behind API Gateway.
 

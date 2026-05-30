@@ -36,6 +36,7 @@ TOKEN=$(aws cognito-idp initiate-auth \
   --output text)
 
 API_URL=$(tofu -chdir=infra/envs/dev output -raw api_gateway_endpoint)
+API_URL="${API_URL%/}"  # strip trailing slash to avoid //path double-slash
 
 echo ""
 echo "ID Token:"
@@ -44,3 +45,4 @@ echo ""
 echo "Test commands:"
 echo "  curl -s -o /dev/null -w \"%{http_code}\" $API_URL/health"
 echo "  curl -s -o /dev/null -w \"%{http_code}\" -H \"Authorization: Bearer \$TOKEN\" $API_URL/health"
+echo "  curl -s -w \"\\n%{http_code}\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '{\"name\":\"Alice\",\"email\":\"alice@example.com\"}' $API_URL/users"

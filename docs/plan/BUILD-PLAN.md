@@ -309,7 +309,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 4 — Remaining services
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** all four services live, each independently scalable. gRPC and SNS/SQS wired up.
 
@@ -347,7 +347,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 5 — Auto-scaling
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** every service scales independently on real signals.
 

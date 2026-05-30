@@ -17,3 +17,8 @@ output "http_listener_arn" {
   description = "HTTP listener ARN (used by ecs-service listener rules and API Gateway VPC Link integration)"
   value       = aws_lb_listener.http.arn
 }
+
+output "arn_suffix" {
+  description = "ALB ARN suffix for CloudWatch metrics and autoscaling ALBRequestCountPerTarget resource labels"
+  value       = aws_lb.this.arn_suffix
+}

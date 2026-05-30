@@ -84,6 +84,9 @@ public class SqsMessagePoller implements SmartLifecycle {
     @Override
     public void stop() {
         running = false;
+        if (pollerThread != null) {
+            pollerThread.interrupt();
+        }
         log.info("SQS poller stopping");
     }
 

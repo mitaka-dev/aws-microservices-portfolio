@@ -172,3 +172,19 @@ resource "aws_apigatewayv2_route" "orders_proxy" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
   target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
 }
+
+resource "aws_apigatewayv2_route" "files" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /files"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+resource "aws_apigatewayv2_route" "files_proxy" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /files/{proxy+}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}

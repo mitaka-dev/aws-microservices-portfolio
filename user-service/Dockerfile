@@ -9,6 +9,7 @@ COPY proto-shared/pom.xml proto-shared/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
+COPY file-service/pom.xml file-service/
 
 # Download dependencies (this layer is cached until a pom.xml changes)
 RUN chmod +x mvnw && ./mvnw -pl user-service -am dependency:resolve dependency:resolve-plugins \

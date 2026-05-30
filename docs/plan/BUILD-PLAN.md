@@ -243,7 +243,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 1 — Networking + ECR (the AWS foundation)
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** a VPC and a place to push images. Nothing running yet.
 

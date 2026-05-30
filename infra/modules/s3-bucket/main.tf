@@ -1,6 +1,8 @@
+data "aws_caller_identity" "current" {}
+
 locals {
   name_prefix = "${var.org}-${var.environment}"
-  bucket_name = "${local.name_prefix}-${var.bucket_suffix}"
+  bucket_name = "${local.name_prefix}-${var.bucket_suffix}-${data.aws_caller_identity.current.account_id}"
 }
 
 resource "aws_s3_bucket" "this" {

@@ -247,3 +247,36 @@ resource "aws_ecs_service" "this" {
 
   tags = { Name = "${local.name_prefix}-${var.service_name}" }
 }
+
+resource "aws_iam_role_policy" "task_sqs" {
+  count = length(var.sqs_queue_arns) > 0 ? 1 : 0
+  name  = "${local.name_prefix}-${var.service_name}-task-sqs"
+  role  = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ChangeMessageVisibility",
+      ]
+      Resource = var.sqs_queue_arns
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "task_sns" {
+  count = length(var.sns_topic_arns) > 0 ? 1 : 0
+  name  = "${local.name_prefix}-${var.service_name}-task-sns"
+  role  = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sns:Publish"]
+      Resource = var.sns_topic_arns
+    }]
+  })
+}

@@ -69,3 +69,13 @@ output "cloud_map_namespace_id" {
   description = "Cloud Map private DNS namespace ID"
   value       = module.cloud_map.namespace_id
 }
+
+output "sns_orders_topic_arn" {
+  description = "SNS topic ARN for order events"
+  value       = module.sns_sqs_orders.topic_arn
+}
+
+output "sqs_orders_queue_url" {
+  description = "SQS queue URL for order processing"
+  value       = module.sns_sqs_orders.queue_url
+}

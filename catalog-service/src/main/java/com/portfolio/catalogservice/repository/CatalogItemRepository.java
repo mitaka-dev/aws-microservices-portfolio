@@ -9,11 +9,12 @@ import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
-import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
-import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -23,9 +24,14 @@ public class CatalogItemRepository {
 
     private final DynamoDbTable<CatalogItem> table;
     private final DynamoDbIndex<CatalogItem> gsi1;
+    private final DynamoDbClient dynamoDbClient;
+    private final String tableName;
 
     public CatalogItemRepository(DynamoDbEnhancedClient enhancedClient,
-                                 @Value("${dynamodb.table.name:catalog}") String tableName) {
+                                 DynamoDbClient dynamoDbClient,
+                                 @Value("${dynamodb.table-name:catalog}") String tableName) {
+        this.dynamoDbClient = dynamoDbClient;
+        this.tableName = tableName;
         this.table = enhancedClient.table(tableName, TableSchema.fromBean(CatalogItem.class));
         this.gsi1 = table.index("GSI1");
     }
@@ -53,16 +59,20 @@ public class CatalogItemRepository {
     }
 
     public boolean decrementStock(String id, int qty) {
-        var key = Key.builder()
-            .partitionValue("PRODUCT#" + id)
-            .sortValue("PRODUCT#" + id)
-            .build();
-        CatalogItem existing = table.getItem(key);
-        if (existing == null || existing.getStock() < qty) {
+        try {
+            dynamoDbClient.updateItem(r -> r
+                .tableName(tableName)
+                .key(Map.of(
+                    "pk", AttributeValue.fromS("PRODUCT#" + id),
+                    "sk", AttributeValue.fromS("PRODUCT#" + id)))
+                .updateExpression("SET #stock = #stock - :qty")
+                .conditionExpression("#stock >= :qty")
+                .expressionAttributeNames(Map.of("#stock", "stock"))
+                .expressionAttributeValues(Map.of(
+                    ":qty", AttributeValue.fromN(String.valueOf(qty)))));
+            return true;
+        } catch (ConditionalCheckFailedException e) {
             return false;
         }
-        existing.setStock(existing.getStock() - qty);
-        table.updateItem(existing);
-        return true;
     }
 }

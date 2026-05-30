@@ -27,6 +27,7 @@ The script creates the user (idempotent) and prints the ID token. Store it:
 ```bash
 TOKEN=$(./scripts/get-token.sh 2>/dev/null | awk '/^eyJ/{print; exit}')
 API=$(tofu -chdir=infra/envs/dev output -raw api_gateway_endpoint)
+API="${API%/}"   # strip trailing slash — tofu output includes it; ALB paths need a single /
 ```
 
 ---

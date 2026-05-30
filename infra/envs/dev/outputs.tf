@@ -37,3 +37,19 @@ output "api_gateway_endpoint" {
   description = "API Gateway invoke URL"
   value       = module.api_gateway.api_endpoint
 }
+
+output "alb_dns_name" {
+  description = "Internal ALB DNS name"
+  value       = module.alb.alb_dns_name
+}
+
+output "rds_address" {
+  description = "RDS hostname"
+  value       = module.rds_postgres.address
+  sensitive   = true
+}
+
+output "ecs_cluster_arn" {
+  description = "ECS cluster ARN"
+  value       = module.ecs_cluster.cluster_arn
+}

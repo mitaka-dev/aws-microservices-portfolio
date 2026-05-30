@@ -91,3 +91,52 @@ resource "aws_lambda_permission" "apigw" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
 }
+
+# ── VPC Link → internal ALB (added in Phase 3) ────────────────────────────────
+
+resource "aws_security_group" "vpc_link" {
+  name   = "${local.name_prefix}-vpc-link-sg"
+  vpc_id = var.vpc_id
+
+  tags = { Name = "${local.name_prefix}-vpc-link-sg" }
+}
+
+resource "aws_vpc_security_group_egress_rule" "vpc_link_all" {
+  security_group_id = aws_security_group.vpc_link.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_apigatewayv2_vpc_link" "this" {
+  name               = "${local.name_prefix}-vpc-link"
+  security_group_ids = [aws_security_group.vpc_link.id]
+  subnet_ids         = var.private_subnet_ids
+
+  tags = { Name = "${local.name_prefix}-vpc-link" }
+}
+
+resource "aws_apigatewayv2_integration" "alb" {
+  api_id                 = aws_apigatewayv2_api.this.id
+  integration_type       = "HTTP_PROXY"
+  connection_type        = "VPC_LINK"
+  connection_id          = aws_apigatewayv2_vpc_link.this.id
+  integration_uri        = var.alb_listener_arn
+  integration_method     = "ANY"
+  payload_format_version = "1.0"
+}
+
+resource "aws_apigatewayv2_route" "users" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /users"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+resource "aws_apigatewayv2_route" "users_proxy" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /users/{proxy+}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}

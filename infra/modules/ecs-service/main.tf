@@ -245,6 +245,11 @@ resource "aws_ecs_service" "this" {
 
   depends_on = [aws_lb_listener_rule.this]
 
+  # Autoscaling manages desired_count at runtime; ignore drift on subsequent applies
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
   tags = { Name = "${local.name_prefix}-${var.service_name}" }
 }
 

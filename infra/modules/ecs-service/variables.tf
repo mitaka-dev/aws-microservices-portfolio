@@ -143,3 +143,39 @@ variable "s3_bucket_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "enable_autoscaling" {
+  description = "Enable Application Auto Scaling for this service"
+  type        = bool
+  default     = false
+}
+
+variable "autoscaling_min_capacity" {
+  description = "Minimum number of tasks when autoscaling is enabled"
+  type        = number
+  default     = 1
+}
+
+variable "autoscaling_max_capacity" {
+  description = "Maximum number of tasks when autoscaling is enabled"
+  type        = number
+  default     = 3
+}
+
+variable "autoscaling_alb_arn_suffix" {
+  description = "ALB ARN suffix (from module.alb.arn_suffix) for ALBRequestCountPerTarget metric"
+  type        = string
+  default     = ""
+}
+
+variable "autoscaling_cpu_target" {
+  description = "Target CPU utilisation percentage for the CPU tracking policy"
+  type        = number
+  default     = 70
+}
+
+variable "autoscaling_request_count_target" {
+  description = "Target ALB requests per minute per task for the request-count tracking policy"
+  type        = number
+  default     = 50
+}

@@ -92,6 +92,9 @@ module "user_service" {
   }
 
   secret_arns_for_exec_role = [module.rds_postgres.secret_arn]
+
+  enable_autoscaling         = true
+  autoscaling_alb_arn_suffix = module.alb.arn_suffix
 }
 
 # Cross-module SG rules — wired here to avoid circular deps between modules
@@ -171,6 +174,9 @@ module "catalog_service" {
     REDIS_PORT             = "6379"
     DYNAMODB_TABLE_NAME    = module.dynamodb_catalog.table_name
   }
+
+  enable_autoscaling         = true
+  autoscaling_alb_arn_suffix = module.alb.arn_suffix
 }
 
 resource "aws_vpc_security_group_ingress_rule" "catalog_from_alb" {
@@ -232,6 +238,9 @@ module "order_service" {
   }
 
   secret_arns_for_exec_role = [module.rds_postgres.secret_arn]
+
+  enable_autoscaling         = true
+  autoscaling_alb_arn_suffix = module.alb.arn_suffix
 }
 
 resource "aws_vpc_security_group_ingress_rule" "order_from_alb" {
@@ -290,6 +299,9 @@ module "file_service" {
     COGNITO_ISSUER_URI     = module.cognito.issuer_uri
     S3_BUCKET_NAME         = module.s3_files.bucket_name
   }
+
+  enable_autoscaling         = true
+  autoscaling_alb_arn_suffix = module.alb.arn_suffix
 }
 
 resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {

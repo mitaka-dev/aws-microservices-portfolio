@@ -261,7 +261,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 2 — Cognito + API Gateway (auth at the edge)
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** issue and validate JWTs *before* any backend exists. Test with curl.
 

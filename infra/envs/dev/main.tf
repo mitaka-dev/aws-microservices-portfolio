@@ -18,3 +18,19 @@ module "ecr" {
     "file-service",
   ]
 }
+
+module "cognito" {
+  source = "../../modules/cognito"
+
+  org         = var.org
+  environment = var.environment
+}
+
+module "api_gateway" {
+  source = "../../modules/api-gateway"
+
+  org                = var.org
+  environment        = var.environment
+  cognito_issuer_uri = module.cognito.issuer_uri
+  cognito_audience   = [module.cognito.app_client_id]
+}

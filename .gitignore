@@ -46,6 +46,7 @@ docker-compose.override.yml
 *.jar
 *.war
 *.ear
+*.zip
 
 # Test output
 surefire-reports/

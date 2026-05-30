@@ -13,6 +13,7 @@
     <module>proto-shared</module>
     <module>user-service</module>
     <module>catalog-service</module>
+    <module>order-service</module>
   </modules>
 
   <properties>

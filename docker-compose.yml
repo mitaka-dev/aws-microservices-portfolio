@@ -28,7 +28,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      SERVICES: dynamodb
+      SERVICES: dynamodb,sns,sqs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 10s

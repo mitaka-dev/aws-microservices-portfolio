@@ -125,3 +125,15 @@ variable "enable_cloud_map" {
   type        = bool
   default     = false
 }
+
+variable "sqs_queue_arns" {
+  description = "SQS queue ARNs the task role needs to receive/delete/change messages on"
+  type        = list(string)
+  default     = []
+}
+
+variable "sns_topic_arns" {
+  description = "SNS topic ARNs the task role needs to publish to"
+  type        = list(string)
+  default     = []
+}

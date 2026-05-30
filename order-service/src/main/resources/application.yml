@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: order-service
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  autoconfigure:
+    exclude:
+      # SqsAutoConfiguration calls PropertyMapper.alwaysApplyingWhenNonNull() removed in SB4.
+      # SqsAsyncClient + polling are wired manually in SqsConfig + SqsMessagePoller.
+      - io.awspring.cloud.autoconfigure.sqs.SqsAutoConfiguration
+
+aws:
+  sqs:
+    poll-wait-seconds: 20
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orderdb
+    username: postgres
+    password: postgres
+  cloud:
+    aws:
+      endpoint: http://localhost:4566
+      credentials:
+        access-key: test
+        secret-key: test
+      region:
+        static: eu-west-1
+
+aws:
+  sns:
+    orders-topic-arn: arn:aws:sns:eu-west-1:000000000000:orders-events
+  sqs:
+    orders-processing-queue-url: http://localhost:4566/000000000000/orders-processing
+    poll-wait-seconds: 1
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: aws
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:orderdb}
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:eu-west-1}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+
+aws:
+  sns:
+    orders-topic-arn: ${SNS_ORDERS_TOPIC_ARN}
+  sqs:
+    orders-processing-queue-url: ${SQS_ORDERS_QUEUE_URL}

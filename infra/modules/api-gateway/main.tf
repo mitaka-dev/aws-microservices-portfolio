@@ -156,3 +156,19 @@ resource "aws_apigatewayv2_route" "catalog_proxy" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
   target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
 }
+
+resource "aws_apigatewayv2_route" "orders" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /orders"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+resource "aws_apigatewayv2_route" "orders_proxy" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "ANY /orders/{proxy+}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}

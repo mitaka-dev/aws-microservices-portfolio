@@ -8,6 +8,7 @@ COPY mvnw pom.xml ./
 COPY proto-shared/pom.xml proto-shared/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
+COPY order-service/pom.xml order-service/
 
 # proto-shared sources needed to generate stubs before catalog-service can compile
 COPY proto-shared/src/ proto-shared/src/

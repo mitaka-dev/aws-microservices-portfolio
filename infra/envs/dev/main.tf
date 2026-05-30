@@ -188,3 +188,72 @@ resource "aws_vpc_security_group_ingress_rule" "redis_from_catalog" {
   to_port                      = 6379
   ip_protocol                  = "tcp"
 }
+
+module "sns_sqs_orders" {
+  source = "../../modules/sns-sqs"
+
+  org         = var.org
+  environment = var.environment
+}
+
+module "order_service" {
+  source = "../../modules/ecs-service"
+
+  org                               = var.org
+  environment                       = var.environment
+  service_name                      = "order-service"
+  image_uri                         = "${module.ecr.repository_urls["order-service"]}:latest"
+  cluster_arn                       = module.ecs_cluster.cluster_arn
+  vpc_id                            = module.network.vpc_id
+  private_subnet_ids                = module.network.private_subnet_ids
+  alb_listener_arn                  = module.alb.http_listener_arn
+  path_patterns                     = ["/orders", "/orders/*"]
+  listener_rule_priority            = 120
+  aws_region                        = var.aws_region
+  health_check_grace_period_seconds = 120
+  sqs_queue_arns                    = [module.sns_sqs_orders.queue_arn]
+  sns_topic_arns                    = [module.sns_sqs_orders.topic_arn]
+  enable_cloud_map                  = true
+  cloud_map_namespace_id            = module.cloud_map.namespace_id
+
+  env_vars = {
+    SPRING_PROFILES_ACTIVE = "aws"
+    AWS_REGION             = var.aws_region
+    COGNITO_ISSUER_URI     = module.cognito.issuer_uri
+    DB_HOST                = module.rds_postgres.address
+    DB_NAME                = "orderdb"
+    SNS_ORDERS_TOPIC_ARN   = module.sns_sqs_orders.topic_arn
+    SQS_ORDERS_QUEUE_URL   = module.sns_sqs_orders.queue_url
+  }
+
+  task_secrets = {
+    SPRING_DATASOURCE_USERNAME = "${module.rds_postgres.secret_arn}:username::"
+    SPRING_DATASOURCE_PASSWORD = "${module.rds_postgres.secret_arn}:password::"
+  }
+
+  secret_arns_for_exec_role = [module.rds_postgres.secret_arn]
+}
+
+resource "aws_vpc_security_group_ingress_rule" "order_from_alb" {
+  security_group_id            = module.order_service.task_sg_id
+  referenced_security_group_id = module.alb.alb_sg_id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_from_order" {
+  security_group_id            = module.rds_postgres.sg_id
+  referenced_security_group_id = module.order_service.task_sg_id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "catalog_grpc_from_order" {
+  security_group_id            = module.catalog_service.task_sg_id
+  referenced_security_group_id = module.order_service.task_sg_id
+  from_port                    = 9090
+  to_port                      = 9090
+  ip_protocol                  = "tcp"
+}

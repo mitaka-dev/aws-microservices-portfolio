@@ -86,6 +86,20 @@ SB 4.0.3 used Spring Framework 7.0.5 which had a bug where `@BootstrapWith`
 traversal always failed even in-process. SB 4.0.6 (Spring Framework 7.0.7) 
 partially fixes it — still needs the two-part forked-JVM fix above.
 
+### 10. `SqsAutoConfiguration` — exclude and wire manually
+
+`SqsAutoConfiguration` (spring-cloud-aws 3.4.0) calls `PropertyMapper.alwaysApplyingWhenNonNull()` which was removed in SB4. Fix:
+
+1. Exclude the autoconfiguration in `application.yml`:
+```yaml
+spring.autoconfigure.exclude:
+  - io.awspring.cloud.autoconfigure.sqs.SqsAutoConfiguration
+```
+2. Provide `SqsAsyncClient` bean manually in a `SqsConfig` class (wire from `spring.cloud.aws.*` properties).
+3. Replace `@SqsListener` with a manual `SmartLifecycle` poller (`SqsMessagePoller`) that calls `SqsAsyncClient.receiveMessage()` in a loop.
+
+`SnsAutoConfiguration` does NOT have this issue — `SnsTemplate` autoconfigures fine.
+
 ### 9. Dockerfile — copy the exec jar, not `*.jar`
 
 The `spring-boot-maven-plugin` with `<classifier>exec</classifier>` produces two jars: `*-SNAPSHOT.jar` (thin) and `*-SNAPSHOT-exec.jar` (fat). A `*.jar` glob in `COPY --from=builder` matches both and fails. Always use:

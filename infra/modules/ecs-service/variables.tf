@@ -101,3 +101,27 @@ variable "secret_arns_for_exec_role" {
   type        = list(string)
   default     = []
 }
+
+variable "health_check_grace_period_seconds" {
+  description = "Seconds ECS waits before starting ALB health checks (covers slow Spring Boot startup)"
+  type        = number
+  default     = 120
+}
+
+variable "dynamodb_table_arns" {
+  description = "DynamoDB table ARNs the task role needs read/write access to"
+  type        = list(string)
+  default     = []
+}
+
+variable "cloud_map_namespace_id" {
+  description = "Cloud Map private DNS namespace ID (enables ECS service discovery registration)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_cloud_map" {
+  description = "Register this service in Cloud Map for service discovery (requires cloud_map_namespace_id)"
+  type        = bool
+  default     = false
+}

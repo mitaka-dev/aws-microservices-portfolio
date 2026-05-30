@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: catalog-service
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  cloud:
+    aws:
+      dynamodb:
+        endpoint: http://localhost:4566
+      credentials:
+        access-key: test
+        secret-key: test
+      region:
+        static: eu-west-1
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: aws
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:eu-west-1}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}

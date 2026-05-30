@@ -53,3 +53,19 @@ output "ecs_cluster_arn" {
   description = "ECS cluster ARN"
   value       = module.ecs_cluster.cluster_arn
 }
+
+output "redis_primary_endpoint" {
+  description = "ElastiCache Redis primary endpoint"
+  value       = module.elasticache_redis.primary_endpoint
+  sensitive   = true
+}
+
+output "dynamodb_catalog_table" {
+  description = "DynamoDB catalog table name"
+  value       = module.dynamodb_catalog.table_name
+}
+
+output "cloud_map_namespace_id" {
+  description = "Cloud Map private DNS namespace ID"
+  value       = module.cloud_map.namespace_id
+}

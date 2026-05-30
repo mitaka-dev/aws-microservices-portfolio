@@ -280,3 +280,17 @@ resource "aws_iam_role_policy" "task_sns" {
     }]
   })
 }
+
+resource "aws_iam_role_policy" "task_s3" {
+  count = length(var.s3_bucket_arns) > 0 ? 1 : 0
+  name  = "${local.name_prefix}-${var.service_name}-task-s3"
+  role  = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject"]
+      Resource = [for arn in var.s3_bucket_arns : "${arn}/*"]
+    }]
+  })
+}

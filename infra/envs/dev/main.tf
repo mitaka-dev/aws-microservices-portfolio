@@ -257,3 +257,45 @@ resource "aws_vpc_security_group_ingress_rule" "catalog_grpc_from_order" {
   to_port                      = 9090
   ip_protocol                  = "tcp"
 }
+
+module "s3_files" {
+  source = "../../modules/s3-bucket"
+
+  org         = var.org
+  environment = var.environment
+}
+
+module "file_service" {
+  source = "../../modules/ecs-service"
+
+  org                               = var.org
+  environment                       = var.environment
+  service_name                      = "file-service"
+  image_uri                         = "${module.ecr.repository_urls["file-service"]}:latest"
+  cluster_arn                       = module.ecs_cluster.cluster_arn
+  vpc_id                            = module.network.vpc_id
+  private_subnet_ids                = module.network.private_subnet_ids
+  alb_listener_arn                  = module.alb.http_listener_arn
+  path_patterns                     = ["/files", "/files/*"]
+  listener_rule_priority            = 130
+  aws_region                        = var.aws_region
+  health_check_grace_period_seconds = 120
+  s3_bucket_arns                    = [module.s3_files.bucket_arn]
+  enable_cloud_map                  = true
+  cloud_map_namespace_id            = module.cloud_map.namespace_id
+
+  env_vars = {
+    SPRING_PROFILES_ACTIVE = "aws"
+    AWS_REGION             = var.aws_region
+    COGNITO_ISSUER_URI     = module.cognito.issuer_uri
+    S3_BUCKET_NAME         = module.s3_files.bucket_name
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {
+  security_group_id            = module.file_service.task_sg_id
+  referenced_security_group_id = module.alb.alb_sg_id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+}

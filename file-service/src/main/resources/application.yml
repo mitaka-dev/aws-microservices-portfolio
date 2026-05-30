@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: file-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+aws:
+  s3:
+    presign-duration-minutes: 15
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+
+aws:
+  s3:
+    bucket-name: portfolio-local-files
+    region: eu-west-1
+    endpoint: http://localhost:4566
+    access-key: test
+    secret-key: test
+    path-style-access: true
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: aws
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+
+aws:
+  s3:
+    bucket-name: ${S3_BUCKET_NAME}
+    region: ${AWS_REGION:eu-west-1}
+    path-style-access: false

@@ -137,3 +137,9 @@ variable "sns_topic_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "s3_bucket_arns" {
+  description = "S3 bucket ARNs the task role needs GetObject/PutObject on"
+  type        = list(string)
+  default     = []
+}

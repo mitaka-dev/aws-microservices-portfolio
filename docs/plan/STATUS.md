@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 4c — file-service
+Phase 5 — Auto-scaling
 
 ## Summary
 Phase 4a is complete. `catalog-service` deployed to ECS Fargate, behind internal ALB, behind API Gateway. DynamoDB single-table design, Redis cache-aside (5-min TTL), gRPC server on port 9090, Cloud Map registration (`catalog-service.internal.local`). Verified: 401 without token, 201 POST /catalog, 200 GET /catalog/{id}, 200 GET /catalog.
@@ -12,7 +12,8 @@ Phase 4a is complete. `catalog-service` deployed to ECS Fargate, behind internal
 - Phase 2 — Cognito + API Gateway: User Pool, public app client, Hosted UI domain. HTTP API, JWT authorizer, `/health` route backed by inline Lambda.
 - Phase 3 — First service on Fargate behind ALB: Internal ALB (`portfolio-dev-alb`), RDS PostgreSQL `db.t4g.micro` (`portfolio-dev-postgres`), ECS cluster (`portfolio-dev-cluster`), `user-service` on Fargate. DB credentials via ECS secrets injection from Secrets Manager (`/portfolio/dev/rds/master-credentials`). Full path: API GW → VPC Link → ALB → Fargate → RDS.
 - Phase 4a — catalog-service: DynamoDB table `portfolio-dev-catalog` (single-table, on-demand), ElastiCache Redis `cache.t4g.micro`, Cloud Map namespace `internal.local`, catalog-service on Fargate with gRPC server on port 9090. Full path: API GW → VPC Link → ALB → Fargate → DynamoDB/Redis.
-- Phase 4b — order-service: PostgreSQL persistence, SNS topic `orders-events`, SQS queue `orders-processing` (+ DLQ), manual `SqsMessagePoller` SmartLifecycle (SqsAutoConfiguration excluded — SB4 compat), gRPC client to catalog-service via Cloud Map DNS. Flow: POST /orders → save → SNS publish → SQS consume → gRPC DecrementStock → CONFIRMED/FAILED. tofu plan shows 117 resources (not yet applied — pending file-service).
+- Phase 4b — order-service: PostgreSQL persistence, SNS topic `orders-events`, SQS queue `orders-processing` (+ DLQ), manual `SqsMessagePoller` SmartLifecycle (SqsAutoConfiguration excluded — SB4 compat), gRPC client to catalog-service via Cloud Map DNS. Flow: POST /orders → save → SNS publish → SQS consume → gRPC DecrementStock → CONFIRMED/FAILED.
+- Phase 4c — file-service: S3 bucket (private, versioned, SSE-S3, lifecycle 7-day multipart cleanup), presigned URLs via raw AWS SDK v2 S3Presigner. POST /files/presign-upload → fileId + PUT URL; GET /files/{id}/presign-download → GET URL. tofu plan shows 138 resources across 4a+4b+4c (not yet applied — user elected to defer all apply until all services ready).
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.
@@ -25,3 +26,4 @@ Phase 4a is complete. `catalog-service` deployed to ECS Fargate, behind internal
 - Dockerfile layer caching for services with local module dependencies: install root POM with `-N install`, then install proto-shared, then `dependency:resolve` for the service. See catalog-service/Dockerfile.
 - When adding a new Maven module to the parent pom, update all sibling Dockerfiles to also COPY the new module's pom.xml (so Maven reactor can find it during the dependency layer step).
 - `SqsAutoConfiguration` (SCA 3.4.0) is incompatible with SB4 — exclude it and use manual `SqsMessagePoller` SmartLifecycle + manual `SqsAsyncClient` bean. `SnsAutoConfiguration` is fine. See CLAUDE.md workaround #10.
+- file-service does not use spring-cloud-aws at all — raw `software.amazon.awssdk:s3` only. `S3Client` and `S3Presigner` wired manually in `S3Config.java` (same pattern as SqsConfig). Path-style access enabled for LocalStack via `aws.s3.path-style-access: true` in local profile.

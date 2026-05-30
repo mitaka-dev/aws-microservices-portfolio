@@ -79,3 +79,8 @@ output "sqs_orders_queue_url" {
   description = "SQS queue URL for order processing"
   value       = module.sns_sqs_orders.queue_url
 }
+
+output "s3_files_bucket_name" {
+  description = "S3 bucket name for file uploads"
+  value       = module.s3_files.bucket_name
+}

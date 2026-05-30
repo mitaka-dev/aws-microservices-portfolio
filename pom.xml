@@ -12,6 +12,7 @@
   <modules>
     <module>proto-shared</module>
     <module>user-service</module>
+    <module>catalog-service</module>
   </modules>
 
   <properties>

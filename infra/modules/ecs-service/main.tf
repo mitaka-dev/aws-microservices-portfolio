@@ -72,6 +72,54 @@ resource "aws_iam_role_policy" "task_cloudwatch" {
   })
 }
 
+resource "aws_iam_role_policy" "task_dynamodb" {
+  count = length(var.dynamodb_table_arns) > 0 ? 1 : 0
+
+  name = "${local.name_prefix}-${var.service_name}-task-ddb"
+  role = aws_iam_role.task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:TransactWriteItems",
+      ]
+      Resource = concat(
+        var.dynamodb_table_arns,
+        [for arn in var.dynamodb_table_arns : "${arn}/index/*"]
+      )
+    }]
+  })
+}
+
+resource "aws_service_discovery_service" "this" {
+  count        = var.enable_cloud_map ? 1 : 0
+  name         = var.service_name
+  namespace_id = var.cloud_map_namespace_id
+
+  dns_config {
+    namespace_id   = var.cloud_map_namespace_id
+    routing_policy = "MULTIVALUE"
+    dns_records {
+      type = "A"
+      ttl  = 10
+    }
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
 # ── Task definition ───────────────────────────────────────────────────────────
 
 resource "aws_ecs_task_definition" "this" {
@@ -186,6 +234,14 @@ resource "aws_ecs_service" "this" {
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
+  health_check_grace_period_seconds  = var.health_check_grace_period_seconds
+
+  dynamic "service_registries" {
+    for_each = var.enable_cloud_map ? [1] : []
+    content {
+      registry_arn = aws_service_discovery_service.this[0].arn
+    }
+  }
 
   depends_on = [aws_lb_listener_rule.this]
 

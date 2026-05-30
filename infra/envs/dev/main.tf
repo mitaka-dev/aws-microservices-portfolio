@@ -66,16 +66,17 @@ module "ecs_cluster" {
 module "user_service" {
   source = "../../modules/ecs-service"
 
-  org                = var.org
-  environment        = var.environment
-  service_name       = "user-service"
-  image_uri          = "${module.ecr.repository_urls["user-service"]}:latest"
-  cluster_arn        = module.ecs_cluster.cluster_arn
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
-  alb_listener_arn   = module.alb.http_listener_arn
-  path_patterns      = ["/users", "/users/*"]
-  aws_region         = var.aws_region
+  org                               = var.org
+  environment                       = var.environment
+  service_name                      = "user-service"
+  image_uri                         = "${module.ecr.repository_urls["user-service"]}:latest"
+  cluster_arn                       = module.ecs_cluster.cluster_arn
+  vpc_id                            = module.network.vpc_id
+  private_subnet_ids                = module.network.private_subnet_ids
+  alb_listener_arn                  = module.alb.http_listener_arn
+  path_patterns                     = ["/users", "/users/*"]
+  aws_region                        = var.aws_region
+  health_check_grace_period_seconds = 120
 
   env_vars = {
     SPRING_PROFILES_ACTIVE = "aws"
@@ -116,5 +117,74 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_user_service" {
   referenced_security_group_id = module.user_service.task_sg_id
   from_port                    = 5432
   to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+module "cloud_map" {
+  source = "../../modules/cloud-map"
+
+  org         = var.org
+  environment = var.environment
+  vpc_id      = module.network.vpc_id
+}
+
+module "dynamodb_catalog" {
+  source = "../../modules/dynamodb"
+
+  org         = var.org
+  environment = var.environment
+}
+
+module "elasticache_redis" {
+  source = "../../modules/elasticache-redis"
+
+  org                = var.org
+  environment        = var.environment
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+}
+
+module "catalog_service" {
+  source = "../../modules/ecs-service"
+
+  org                               = var.org
+  environment                       = var.environment
+  service_name                      = "catalog-service"
+  image_uri                         = "${module.ecr.repository_urls["catalog-service"]}:latest"
+  cluster_arn                       = module.ecs_cluster.cluster_arn
+  vpc_id                            = module.network.vpc_id
+  private_subnet_ids                = module.network.private_subnet_ids
+  alb_listener_arn                  = module.alb.http_listener_arn
+  path_patterns                     = ["/catalog", "/catalog/*"]
+  listener_rule_priority            = 110
+  aws_region                        = var.aws_region
+  health_check_grace_period_seconds = 120
+  dynamodb_table_arns               = [module.dynamodb_catalog.table_arn]
+  cloud_map_namespace_id            = module.cloud_map.namespace_id
+  enable_cloud_map                  = true
+
+  env_vars = {
+    SPRING_PROFILES_ACTIVE = "aws"
+    AWS_REGION             = var.aws_region
+    COGNITO_ISSUER_URI     = module.cognito.issuer_uri
+    REDIS_HOST             = module.elasticache_redis.primary_endpoint
+    REDIS_PORT             = "6379"
+    DYNAMODB_TABLE_NAME    = module.dynamodb_catalog.table_name
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "catalog_from_alb" {
+  security_group_id            = module.catalog_service.task_sg_id
+  referenced_security_group_id = module.alb.alb_sg_id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "redis_from_catalog" {
+  security_group_id            = module.elasticache_redis.sg_id
+  referenced_security_group_id = module.catalog_service.task_sg_id
+  from_port                    = 6379
+  to_port                      = 6379
   ip_protocol                  = "tcp"
 }

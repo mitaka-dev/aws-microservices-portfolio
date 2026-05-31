@@ -105,3 +105,30 @@ spring.autoconfigure.exclude:
 The `spring-boot-maven-plugin` with `<classifier>exec</classifier>` produces two jars: `*-SNAPSHOT.jar` (thin) and `*-SNAPSHOT-exec.jar` (fat). A `*.jar` glob in `COPY --from=builder` matches both and fails. Always use:
 
 COPY --from=builder /build/<service>/target/*-exec.jar app.jar
+
+### 11. `CloudWatchExportAutoConfiguration` — exclude in all services
+
+`CloudWatchExportAutoConfiguration` (spring-cloud-aws 3.4.0) references `StepRegistryProperties` which was removed in SB4. Any service with spring-cloud-aws on the classpath will fail to start unless this is excluded. Add to the top-level `spring:` block of every `application.yml`:
+
+```yaml
+spring:
+  autoconfigure:
+    exclude:
+      - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
+```
+
+### 12. OTel Java agent — use `apt-get install curl` in Dockerfile, not `ADD https://`
+
+`eclipse-temurin:25-jdk` has neither `curl` nor `wget`. Docker's `ADD https://` for GitHub release URLs silently downloads an HTML redirect page instead of the JAR. Use:
+
+```dockerfile
+FROM eclipse-temurin:25-jdk AS otel-agent
+ARG OTEL_AGENT_VERSION=2.7.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir /otel \
+    && curl -fsSL -o /otel/javaagent.jar \
+       "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
+```
+
+OTel agent 2.7.0 logs a non-fatal `InaccessibleObjectException` on Java 25 (module system restriction) but the JVM and Spring Boot continue normally.

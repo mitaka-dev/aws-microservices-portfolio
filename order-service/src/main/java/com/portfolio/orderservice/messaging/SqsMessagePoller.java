@@ -65,7 +65,13 @@ public class SqsMessagePoller implements SmartLifecycle {
 
     private void processMessage(Message msg) {
         try {
-            var event = objectMapper.readValue(msg.body(), OrderCreatedEvent.class);
+            String body = msg.body();
+            // SNS wraps the payload in a notification envelope when delivering to SQS
+            var node = objectMapper.readTree(body);
+            if ("Notification".equals(node.path("Type").asText(null))) {
+                body = node.get("Message").asText();
+            }
+            var event = objectMapper.readValue(body, OrderCreatedEvent.class);
             listener.handleOrderCreated(event);
             sqsClient.deleteMessage(r -> r.queueUrl(queueUrl).receiptHandle(msg.receiptHandle())).join();
         } catch (Exception e) {

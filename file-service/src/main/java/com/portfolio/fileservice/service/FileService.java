@@ -3,6 +3,7 @@ package com.portfolio.fileservice.service;
 import com.portfolio.fileservice.dto.PresignDownloadResponse;
 import com.portfolio.fileservice.dto.PresignUploadRequest;
 import com.portfolio.fileservice.dto.PresignUploadResponse;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -18,13 +19,16 @@ public class FileService {
     private final S3Presigner presigner;
     private final String bucketName;
     private final int presignMinutes;
+    private final MeterRegistry meterRegistry;
 
     public FileService(S3Presigner presigner,
                        @Value("${aws.s3.bucket-name}") String bucketName,
-                       @Value("${aws.s3.presign-duration-minutes:15}") int presignMinutes) {
+                       @Value("${aws.s3.presign-duration-minutes:15}") int presignMinutes,
+                       MeterRegistry meterRegistry) {
         this.presigner = presigner;
         this.bucketName = bucketName;
         this.presignMinutes = presignMinutes;
+        this.meterRegistry = meterRegistry;
     }
 
     public PresignUploadResponse presignUpload(PresignUploadRequest request) {
@@ -40,6 +44,7 @@ public class FileService {
             .build();
 
         var presigned = presigner.presignPutObject(presignRequest);
+        meterRegistry.counter("files.presign_upload.total").increment();
         return new PresignUploadResponse(fileId, presigned.url().toString());
     }
 

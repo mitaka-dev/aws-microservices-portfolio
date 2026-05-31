@@ -368,7 +368,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 6 — Observability
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** logs, metrics, traces, one dashboard, a few alarms.
 

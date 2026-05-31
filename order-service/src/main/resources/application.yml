@@ -10,6 +10,8 @@ spring:
       # SqsAutoConfiguration calls PropertyMapper.alwaysApplyingWhenNonNull() removed in SB4.
       # SqsAsyncClient + polling are wired manually in SqsConfig + SqsMessagePoller.
       - io.awspring.cloud.autoconfigure.sqs.SqsAutoConfiguration
+      # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
+      - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
 
 aws:
   sqs:
@@ -30,12 +32,12 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: jdbc:postgresql://localhost:5432/orderdb
-    username: postgres
-    password: postgres
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:userdb}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
   cloud:
     aws:
-      endpoint: http://localhost:4566
+      endpoint: ${LOCALSTACK_URL:http://localhost:4566}
       credentials:
         access-key: test
         secret-key: test
@@ -46,7 +48,7 @@ aws:
   sns:
     orders-topic-arn: arn:aws:sns:eu-west-1:000000000000:orders-events
   sqs:
-    orders-processing-queue-url: http://localhost:4566/000000000000/orders-processing
+    orders-processing-queue-url: ${LOCALSTACK_URL:http://localhost:4566}/000000000000/orders-processing
     poll-wait-seconds: 1
 
 management:
@@ -77,3 +79,11 @@ aws:
     orders-topic-arn: ${SNS_ORDERS_TOPIC_ARN}
   sqs:
     orders-processing-queue-url: ${SQS_ORDERS_QUEUE_URL}
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+        namespace: Portfolio/${spring.application.name}
+        step: 60s

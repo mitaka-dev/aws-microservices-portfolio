@@ -4,6 +4,8 @@ import com.portfolio.userservice.dto.CreateUserRequest;
 import com.portfolio.userservice.dto.UserResponse;
 import com.portfolio.userservice.model.User;
 import com.portfolio.userservice.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,15 +16,23 @@ import org.springframework.web.server.ResponseStatusException;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final MeterRegistry meterRegistry;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, MeterRegistry meterRegistry) {
         this.userRepository = userRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
     public UserResponse createUser(CreateUserRequest request) {
-        var user = new User(request.email(), request.name());
-        return UserResponse.from(userRepository.save(user));
+        try {
+            var user = new User(request.email(), request.name());
+            UserResponse response = UserResponse.from(userRepository.save(user));
+            meterRegistry.counter("users.created.total").increment();
+            return response;
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
+        }
     }
 
     public UserResponse getUser(Long id) {

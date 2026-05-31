@@ -1,10 +1,10 @@
 # Project Status
 
 ## Current Phase
-Phase 6 — Observability
+Phase 7 — (next planned phase)
 
 ## Summary
-Phase 5 complete and validated. 158 resources applied. k6 smoke test passed: 276/276 checks green, p(95)=161ms, 0 failures. user-service returns 500 on duplicate email (constraint not mapped to 409) — noted for Phase 6 or later. Infrastructure live; ready for Phase 6 — Observability.
+Phase 6 complete. 176 resources applied. ADOT sidecar + OTel Java agent 2.7.0 on all 4 services → X-Ray traces. Micrometer CloudWatch metrics export enabled (namespace `Portfolio/<service>`). CloudWatch Dashboard with 10 widgets across 6 rows (ALB, ECS, RDS, SQS, DynamoDB). SNS alarm topic + 9 CloudWatch alarms. Two new SB4 workarounds: `CloudWatchExportAutoConfiguration` must be excluded (references removed SB3 class); OTel agent Dockerfile must use `apt-get install curl` not `ADD https://`.
 
 ## Completed Phases
 - Phase 0 — Local Foundation: Maven monorepo, `user-service`, Flyway, Testcontainers IT tests passing.
@@ -15,6 +15,7 @@ Phase 5 complete and validated. 158 resources applied. k6 smoke test passed: 276
 - Phase 4b — order-service: PostgreSQL persistence, SNS topic `orders-events`, SQS queue `orders-processing` (+ DLQ), manual `SqsMessagePoller` SmartLifecycle (SqsAutoConfiguration excluded — SB4 compat), gRPC client to catalog-service via Cloud Map DNS. Flow: POST /orders → save → SNS publish → SQS consume → gRPC DecrementStock → CONFIRMED/FAILED.
 - Phase 4c — file-service: S3 bucket `portfolio-dev-files-476114152732` (private, versioned, SSE-S3, lifecycle 7-day multipart cleanup), presigned URLs via raw AWS SDK v2 S3Presigner. POST /files/presign-upload → fileId + PUT URL; GET /files/{id}/presign-download → GET URL. All 4 services applied (138 resources) then destroyed.
 - Phase 5 — Auto-scaling: Application Auto Scaling on all 4 services. Target tracking: ALBRequestCountPerTarget @ 50 req/min/task + CPU @ 70%. Scheduled: scale-to-zero 22:00 UTC, scale-up 08:00 UTC. `lifecycle { ignore_changes = [desired_count] }` on ECS services. k6 smoke/scale/order-flow scripts in `tests/load/`. 158 resources applied. k6 smoke test: 276 checks, 0 failures, p(95)=161ms (2026-05-31).
+- Phase 6 — Observability: ADOT sidecar + OTel Java agent 2.7.0 on all 4 ECS services → X-Ray distributed traces. Micrometer CloudWatch metrics export (namespace `Portfolio/<service>`, 60s step). Business counters: users.created.total, catalog.items.created.total, orders.created.total, files.presign_upload.total. CloudWatch Dashboard (10 widgets: ALB requests/latency, ECS CPU/memory, RDS connections/CPU, SQS visible/age, DynamoDB RCU/WCU). SNS alarm topic (dpttraykov@gmail.com) + 9 alarms (4× 5xx, 4× ECS running tasks, SQS age, DLQ depth, RDS CPU). 176 resources applied (2026-05-31).
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.

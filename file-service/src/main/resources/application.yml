@@ -1,6 +1,10 @@
 spring:
   application:
     name: file-service
+  autoconfigure:
+    exclude:
+      # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
+      - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
 
 management:
   endpoints:
@@ -25,7 +29,7 @@ aws:
   s3:
     bucket-name: portfolio-local-files
     region: eu-west-1
-    endpoint: http://localhost:4566
+    endpoint: ${LOCALSTACK_URL:http://localhost:4566}
     access-key: test
     secret-key: test
     path-style-access: true
@@ -52,3 +56,11 @@ aws:
     bucket-name: ${S3_BUCKET_NAME}
     region: ${AWS_REGION:eu-west-1}
     path-style-access: false
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+        namespace: Portfolio/${spring.application.name}
+        step: 60s

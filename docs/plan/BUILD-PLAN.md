@@ -440,7 +440,6 @@ file-service  ──►  proto-shared
    - **Quickstart:** `./scripts/up.sh` → `./scripts/get-token.sh` → curl example → `./scripts/down.sh`.
    - **Cost breakdown table** (always-on vs torn-down).
    - **Screenshots:** ECS console, X-Ray service map, CloudWatch dashboard, scaling event, k6 output.
-   - **Demo video link** (3–5 min Loom/YouTube).
    - **Architectural tradeoffs** — honest list of "what I'd change for production": multi-AZ, Aurora, EKS+Karpenter, WAF, multi-region, service mesh, multi-repo per team. *This section signals senior-level thinking and is often what gets you the interview.*
    - **Monorepo justification** — the one-sentence tradeoff acknowledgment.
 2. **Architecture Decision Records** in `docs/decisions/`:
@@ -452,8 +451,7 @@ file-service  ──►  proto-shared
    - `006-maven-multi-module.md`
    - `007-cognito-over-self-issued-jwt.md`
    - Each one-page: Context / Decision / Consequences / Alternatives considered.
-3. **Demo video** (3–5 min): walk the architecture diagram, run a request, show the trace in X-Ray, trigger scaling with k6.
-4. Pin the repo on your GitHub profile. Link from CV and LinkedIn.
+3. Pin the repo on your GitHub profile. Link from CV and LinkedIn.
 
 **Exit criteria:** a stranger can read the README in 3 minutes and understand what you built, why, and what you'd do differently at scale.
 
@@ -487,15 +485,15 @@ file-service  ──►  proto-shared
 
 ## 5. Definition of Done
 
-- [ ] `./scripts/up.sh` provisions everything from zero in under 20 minutes.
+- [ ] `./scripts/up.sh` provisions everything from zero.
+- [ ] `./scripts/down.sh` removes everything (verify zero unexpected charges next day).
 - [ ] `./mvnw verify` is green from repo root.
 - [ ] End-to-end k6 flow passes: sign up → log in → create catalog item → place order → upload file.
 - [ ] Auto-scaling triggers under k6 load and you have a screenshot.
 - [ ] CloudWatch dashboard shows live metrics from all 4 services.
 - [ ] X-Ray service map shows traces spanning all services + Dynamo + Redis.
 - [ ] CI pipeline deploys on merge to main with no manual steps.
-- [ ] `./scripts/down.sh` removes everything (verify zero unexpected charges next day).
-- [ ] README has architecture diagram, AWS-services bullet list, tradeoffs section, demo video link.
+- [ ] README has architecture diagram, AWS-services bullet list, tradeoffs section.
 - [ ] At least 5 ADRs written.
 - [ ] Repo pinned on GitHub profile, linked from CV.
 
@@ -527,5 +525,3 @@ In order of CV value:
 - ❌ Custom Gradle build logic. Maven is fine, standard, and recruiter-friendly.
 
 ---
-
-**Start with Phase 0. Good luck.**

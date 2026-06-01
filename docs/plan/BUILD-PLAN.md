@@ -404,7 +404,7 @@ file-service  ──►  proto-shared
 ---
 
 ### Phase 7 — CI/CD
-- [ ] **Complete**
+- [x] **Complete**
 
 **Goal:** push to `main` → image built, pushed to ECR, ECS service updated. No long-lived AWS credentials anywhere.
 

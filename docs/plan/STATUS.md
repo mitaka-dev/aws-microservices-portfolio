@@ -1,10 +1,10 @@
 # Project Status
 
 ## Current Phase
-Phase 7 — (next planned phase)
+Phase 8 — Polish for the CV (next planned phase)
 
 ## Summary
-Phase 6 complete. 176 resources applied. ADOT sidecar + OTel Java agent 2.7.0 on all 4 services → X-Ray traces. Micrometer CloudWatch metrics export enabled (namespace `Portfolio/<service>`). CloudWatch Dashboard with 10 widgets across 6 rows (ALB, ECS, RDS, SQS, DynamoDB). SNS alarm topic + 9 CloudWatch alarms. Two new SB4 workarounds: `CloudWatchExportAutoConfiguration` must be excluded (references removed SB3 class); OTel agent Dockerfile must use `apt-get install curl` not `ADD https://`.
+Phase 7 complete. GitHub Actions CI/CD via OIDC — no long-lived AWS credentials. Three workflows: `ci.yml` (test on PR, build+push+deploy changed services on push to main with git-diff detection), `infra.yml` (tofu plan comment on infra/** PRs, tofu apply on manual dispatch), `load-test.yml` (k6 smoke on manual dispatch). IAM OIDC provider + `portfolio-dev-ci` role (AdministratorAccess, trust scoped to repo). Lessons: S3 backend profile must be removed for CI credential chain to work; `*.tfvars` gitignore was over-broad — narrowed to `*.secret.tfvars` and committed `terraform.tfvars`.
 
 ## Completed Phases
 - Phase 0 — Local Foundation: Maven monorepo, `user-service`, Flyway, Testcontainers IT tests passing.
@@ -16,6 +16,7 @@ Phase 6 complete. 176 resources applied. ADOT sidecar + OTel Java agent 2.7.0 on
 - Phase 4c — file-service: S3 bucket `portfolio-dev-files-476114152732` (private, versioned, SSE-S3, lifecycle 7-day multipart cleanup), presigned URLs via raw AWS SDK v2 S3Presigner. POST /files/presign-upload → fileId + PUT URL; GET /files/{id}/presign-download → GET URL. All 4 services applied (138 resources) then destroyed.
 - Phase 5 — Auto-scaling: Application Auto Scaling on all 4 services. Target tracking: ALBRequestCountPerTarget @ 50 req/min/task + CPU @ 70%. Scheduled: scale-to-zero 22:00 UTC, scale-up 08:00 UTC. `lifecycle { ignore_changes = [desired_count] }` on ECS services. k6 smoke/scale/order-flow scripts in `tests/load/`. 158 resources applied. k6 smoke test: 276 checks, 0 failures, p(95)=161ms (2026-05-31).
 - Phase 6 — Observability: ADOT sidecar + OTel Java agent 2.7.0 on all 4 ECS services → X-Ray distributed traces. Micrometer CloudWatch metrics export (namespace `Portfolio/<service>`, 60s step). Business counters: users.created.total, catalog.items.created.total, orders.created.total, files.presign_upload.total. CloudWatch Dashboard (10 widgets: ALB requests/latency, ECS CPU/memory, RDS connections/CPU, SQS visible/age, DynamoDB RCU/WCU). SNS alarm topic (dpttraykov@gmail.com) + 9 alarms (4× 5xx, 4× ECS running tasks, SQS age, DLQ depth, RDS CPU). 176 resources applied (2026-05-31).
+- Phase 7 — CI/CD: GitHub Actions via OIDC (no long-lived credentials). `ci.yml`: test on PR + build/push/deploy on push to main (git-diff service detection). `infra.yml`: tofu plan on infra/** PRs, apply on dispatch. `load-test.yml`: k6 smoke on dispatch. `infra/modules/github-oidc`: OIDC provider + `portfolio-dev-ci` role. `*.tfvars` gitignore narrowed to `*.secret.tfvars`; `terraform.tfvars` committed.
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.

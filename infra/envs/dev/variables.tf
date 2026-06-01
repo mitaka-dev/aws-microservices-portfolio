@@ -22,3 +22,9 @@ variable "vpc_cidr" {
   type        = string
   default     = "10.0.0.0/16"
 }
+
+variable "aws_profile" {
+  description = "AWS CLI profile to use (empty string uses the default credential chain — set in CI)"
+  type        = string
+  default     = ""
+}

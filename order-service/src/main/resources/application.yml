@@ -5,6 +5,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+  flyway:
+    table: flyway_schema_history_order_service
+    baseline-on-migrate: true
+    baseline-version: 0
   autoconfigure:
     exclude:
       # SqsAutoConfiguration calls PropertyMapper.alwaysApplyingWhenNonNull() removed in SB4.

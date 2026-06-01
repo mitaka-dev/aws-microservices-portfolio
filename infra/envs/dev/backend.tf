@@ -5,6 +5,5 @@ terraform {
     region         = "eu-west-1"
     dynamodb_table = "portfolio-tfstate-locks"
     encrypt        = true
-    profile        = "aws-microservices-portfolio"
   }
 }

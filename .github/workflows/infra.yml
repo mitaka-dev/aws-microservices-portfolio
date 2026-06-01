@@ -34,7 +34,7 @@ jobs:
 
       - name: tofu init
         working-directory: infra/envs/dev
-        run: tofu init -backend-config="profile="
+        run: tofu init
 
       - name: tofu validate
         working-directory: infra/envs/dev
@@ -91,7 +91,7 @@ jobs:
 
       - name: tofu init
         working-directory: infra/envs/dev
-        run: tofu init -backend-config="profile="
+        run: tofu init
 
       - name: tofu apply
         working-directory: infra/envs/dev

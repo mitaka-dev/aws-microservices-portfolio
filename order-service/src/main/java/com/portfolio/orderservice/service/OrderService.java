@@ -8,6 +8,7 @@ import com.portfolio.orderservice.messaging.OrderItemEvent;
 import com.portfolio.orderservice.model.Order;
 import com.portfolio.orderservice.model.OrderItem;
 import com.portfolio.orderservice.repository.OrderRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,13 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final OrderEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
-    public OrderService(OrderRepository orderRepository, OrderEventPublisher eventPublisher) {
+    public OrderService(OrderRepository orderRepository, OrderEventPublisher eventPublisher,
+                        MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.eventPublisher = eventPublisher;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -56,7 +60,7 @@ public class OrderService {
             items.stream().map(i -> new OrderItemEvent(i.getProductId(), i.getQuantity(), i.getUnitPrice())).toList()
         );
         eventPublisher.publishOrderCreated(event);
-
+        meterRegistry.counter("orders.created.total").increment();
         return OrderResponse.from(saved);
     }
 

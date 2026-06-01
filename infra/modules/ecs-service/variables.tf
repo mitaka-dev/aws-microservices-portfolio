@@ -179,3 +179,15 @@ variable "autoscaling_request_count_target" {
   type        = number
   default     = 50
 }
+
+variable "enable_adot" {
+  description = "Deploy the ADOT collector sidecar and inject OTel env vars into the main container"
+  type        = bool
+  default     = false
+}
+
+variable "otel_service_name" {
+  description = "OTEL_SERVICE_NAME env var; defaults to service_name if empty"
+  type        = string
+  default     = ""
+}

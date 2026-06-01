@@ -4,6 +4,7 @@ import com.portfolio.catalogservice.dto.CatalogItemResponse;
 import com.portfolio.catalogservice.dto.CreateCatalogItemRequest;
 import com.portfolio.catalogservice.model.CatalogItem;
 import com.portfolio.catalogservice.repository.CatalogItemRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
@@ -18,9 +19,11 @@ import java.util.UUID;
 public class CatalogService {
 
     private final CatalogItemRepository repository;
+    private final MeterRegistry meterRegistry;
 
-    public CatalogService(CatalogItemRepository repository) {
+    public CatalogService(CatalogItemRepository repository, MeterRegistry meterRegistry) {
         this.repository = repository;
+        this.meterRegistry = meterRegistry;
     }
 
     public CatalogItemResponse createItem(CreateCatalogItemRequest request) {
@@ -37,6 +40,7 @@ public class CatalogService {
         item.setStock(request.stock());
         item.setCreatedAt(Instant.now());
         repository.save(item);
+        meterRegistry.counter("catalog.items.created.total").increment();
         return CatalogItemResponse.from(item);
     }
 

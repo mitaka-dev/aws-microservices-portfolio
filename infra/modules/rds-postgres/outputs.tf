@@ -22,3 +22,8 @@ output "sg_id" {
   description = "RDS security group ID (add ingress rules externally)"
   value       = aws_security_group.rds.id
 }
+
+output "db_instance_identifier" {
+  description = "RDS DB instance identifier (used as CloudWatch dimension)"
+  value       = aws_db_instance.this.id
+}

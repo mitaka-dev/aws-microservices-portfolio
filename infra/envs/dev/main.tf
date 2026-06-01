@@ -95,6 +95,9 @@ module "user_service" {
 
   enable_autoscaling         = true
   autoscaling_alb_arn_suffix = module.alb.arn_suffix
+
+  enable_adot       = true
+  otel_service_name = "user-service"
 }
 
 # Cross-module SG rules — wired here to avoid circular deps between modules
@@ -177,6 +180,9 @@ module "catalog_service" {
 
   enable_autoscaling         = true
   autoscaling_alb_arn_suffix = module.alb.arn_suffix
+
+  enable_adot       = true
+  otel_service_name = "catalog-service"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "catalog_from_alb" {
@@ -227,7 +233,7 @@ module "order_service" {
     AWS_REGION             = var.aws_region
     COGNITO_ISSUER_URI     = module.cognito.issuer_uri
     DB_HOST                = module.rds_postgres.address
-    DB_NAME                = "orderdb"
+    DB_NAME                = module.rds_postgres.db_name
     SNS_ORDERS_TOPIC_ARN   = module.sns_sqs_orders.topic_arn
     SQS_ORDERS_QUEUE_URL   = module.sns_sqs_orders.queue_url
   }
@@ -241,6 +247,9 @@ module "order_service" {
 
   enable_autoscaling         = true
   autoscaling_alb_arn_suffix = module.alb.arn_suffix
+
+  enable_adot       = true
+  otel_service_name = "order-service"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "order_from_alb" {
@@ -302,6 +311,9 @@ module "file_service" {
 
   enable_autoscaling         = true
   autoscaling_alb_arn_suffix = module.alb.arn_suffix
+
+  enable_adot       = true
+  otel_service_name = "file-service"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {
@@ -310,4 +322,43 @@ resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {
   from_port                    = 8080
   to_port                      = 8080
   ip_protocol                  = "tcp"
+}
+
+module "observability" {
+  source = "../../modules/observability"
+
+  org         = var.org
+  environment = var.environment
+  region      = var.aws_region
+
+  alarm_email         = "dpttraykov@gmail.com"
+  cluster_name        = module.ecs_cluster.cluster_name
+  rds_identifier      = module.rds_postgres.db_instance_identifier
+  sqs_queue_name      = module.sns_sqs_orders.queue_name
+  dlq_name            = module.sns_sqs_orders.dlq_name
+  dynamodb_table_name = module.dynamodb_catalog.table_name
+  alb_arn_suffix      = module.alb.arn_suffix
+
+  services = [
+    {
+      name                    = "user-service"
+      ecs_service_name        = module.user_service.service_name
+      target_group_arn_suffix = module.user_service.target_group_arn_suffix
+    },
+    {
+      name                    = "catalog-service"
+      ecs_service_name        = module.catalog_service.service_name
+      target_group_arn_suffix = module.catalog_service.target_group_arn_suffix
+    },
+    {
+      name                    = "order-service"
+      ecs_service_name        = module.order_service.service_name
+      target_group_arn_suffix = module.order_service.target_group_arn_suffix
+    },
+    {
+      name                    = "file-service"
+      ecs_service_name        = module.file_service.service_name
+      target_group_arn_suffix = module.file_service.target_group_arn_suffix
+    },
+  ]
 }

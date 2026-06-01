@@ -27,10 +27,22 @@ RUN chmod +x mvnw && \
 COPY catalog-service/src/ catalog-service/src/
 RUN ./mvnw -pl catalog-service clean package -DskipTests --no-transfer-progress
 
+# OTel agent stage
+FROM eclipse-temurin:25-jdk AS otel-agent
+ARG OTEL_AGENT_VERSION=2.7.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir /otel \
+    && curl -fsSL -o /otel/javaagent.jar \
+       "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
+
 # Runtime stage
 FROM eclipse-temurin:25-jre AS runtime
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system app && adduser --system --ingroup app app
 WORKDIR /app
+COPY --from=otel-agent /otel/javaagent.jar /otel/javaagent.jar
 COPY --from=builder /build/catalog-service/target/*-exec.jar app.jar
 USER app
 EXPOSE 8080 9090

@@ -1,6 +1,10 @@
 spring:
   application:
     name: catalog-service
+  autoconfigure:
+    exclude:
+      # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
+      - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
   cache:
     type: redis
     redis:
@@ -22,12 +26,12 @@ spring:
       on-profile: local
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   cloud:
     aws:
       dynamodb:
-        endpoint: http://localhost:4566
+        endpoint: ${LOCALSTACK_URL:http://localhost:4566}
       credentials:
         access-key: test
         secret-key: test
@@ -58,3 +62,11 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${COGNITO_ISSUER_URI}
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+        namespace: Portfolio/${spring.application.name}
+        step: 60s

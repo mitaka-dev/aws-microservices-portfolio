@@ -47,33 +47,3 @@ resource "aws_appautoscaling_policy" "alb_requests" {
     scale_out_cooldown = 60
   }
 }
-
-# Scale to zero at 22:00 UTC — portfolio cost saver, documented in README
-resource "aws_appautoscaling_scheduled_action" "scale_down" {
-  count              = var.enable_autoscaling ? 1 : 0
-  name               = "${local.name_prefix}-${var.service_name}-scale-down"
-  service_namespace  = aws_appautoscaling_target.ecs[0].service_namespace
-  resource_id        = aws_appautoscaling_target.ecs[0].resource_id
-  scalable_dimension = aws_appautoscaling_target.ecs[0].scalable_dimension
-  schedule           = "cron(0 22 * * ? *)"
-
-  scalable_target_action {
-    min_capacity = 0
-    max_capacity = 0
-  }
-}
-
-# Bring back up at 08:00 UTC
-resource "aws_appautoscaling_scheduled_action" "scale_up" {
-  count              = var.enable_autoscaling ? 1 : 0
-  name               = "${local.name_prefix}-${var.service_name}-scale-up"
-  service_namespace  = aws_appautoscaling_target.ecs[0].service_namespace
-  resource_id        = aws_appautoscaling_target.ecs[0].resource_id
-  scalable_dimension = aws_appautoscaling_target.ecs[0].scalable_dimension
-  schedule           = "cron(0 8 * * ? *)"
-
-  scalable_target_action {
-    min_capacity = var.autoscaling_min_capacity
-    max_capacity = var.autoscaling_max_capacity
-  }
-}

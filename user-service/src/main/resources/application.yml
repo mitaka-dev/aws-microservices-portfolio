@@ -1,6 +1,10 @@
 spring:
   application:
     name: user-service
+  autoconfigure:
+    exclude:
+      # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
+      - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
   jpa:
     open-in-view: false
     hibernate:
@@ -21,9 +25,9 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: jdbc:postgresql://localhost:5432/userdb
-    username: postgres
-    password: postgres
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/userdb
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
   cloud:
     aws:
       secretsmanager:
@@ -55,3 +59,11 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${COGNITO_ISSUER_URI}
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+        namespace: Portfolio/${spring.application.name}
+        step: 60s

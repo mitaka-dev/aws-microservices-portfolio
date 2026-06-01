@@ -1,5 +1,58 @@
 locals {
   name_prefix = "${var.org}-${var.environment}"
+
+  otel_env_vars = var.enable_adot ? [
+    { name = "JAVA_TOOL_OPTIONS", value = "-javaagent:/otel/javaagent.jar" },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:4317" },
+    { name = "OTEL_TRACES_EXPORTER", value = "otlp" },
+    { name = "OTEL_METRICS_EXPORTER", value = "none" },
+    { name = "OTEL_LOGS_EXPORTER", value = "none" },
+    { name = "OTEL_SERVICE_NAME", value = var.otel_service_name != "" ? var.otel_service_name : var.service_name },
+  ] : []
+
+  main_container = {
+    name      = var.service_name
+    image     = var.image_uri
+    essential = true
+    portMappings = [{
+      containerPort = var.container_port
+      protocol      = "tcp"
+    }]
+    environment = concat(
+      [for k, v in var.env_vars : { name = k, value = v }],
+      local.otel_env_vars
+    )
+    secrets = [for k, v in var.task_secrets : { name = k, valueFrom = v }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.this.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "ecs"
+      }
+    }
+  }
+
+  adot_container = {
+    name      = "adot-collector"
+    image     = "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.1"
+    essential = false
+    environment = [
+      { name = "AOT_CONFIG_CONTENT", value = file("${path.module}/adot-config.yaml") }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.this.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "adot"
+      }
+    }
+  }
+
+  # jsonencode over a tuple literal avoids Terraform's list type-unification constraint
+  # (main_container has 7 keys, adot_container has 5 — different object types)
+  container_defs_json = var.enable_adot ? jsonencode([local.main_container, local.adot_container]) : jsonencode([local.main_container])
 }
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
@@ -131,28 +184,7 @@ resource "aws_ecs_task_definition" "this" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  container_definitions = jsonencode([{
-    name      = var.service_name
-    image     = var.image_uri
-    essential = true
-
-    portMappings = [{
-      containerPort = var.container_port
-      protocol      = "tcp"
-    }]
-
-    environment = [for k, v in var.env_vars : { name = k, value = v }]
-    secrets     = [for k, v in var.task_secrets : { name = k, valueFrom = v }]
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.this.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "ecs"
-      }
-    }
-  }])
+  container_definitions = local.container_defs_json
 
   tags = { Name = "${local.name_prefix}-${var.service_name}" }
 }
@@ -296,6 +328,26 @@ resource "aws_iam_role_policy" "task_s3" {
       Effect   = "Allow"
       Action   = ["s3:GetObject", "s3:PutObject"]
       Resource = [for arn in var.s3_bucket_arns : "${arn}/*"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "task_xray" {
+  count = var.enable_adot ? 1 : 0
+  name  = "${local.name_prefix}-${var.service_name}-task-xray"
+  role  = aws_iam_role.task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+      ]
+      Resource = "*"
     }]
   })
 }

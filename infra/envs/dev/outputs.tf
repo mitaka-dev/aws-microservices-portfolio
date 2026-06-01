@@ -84,3 +84,8 @@ output "s3_files_bucket_name" {
   description = "S3 bucket name for file uploads"
   value       = module.s3_files.bucket_name
 }
+
+output "ci_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC — set as AWS_ROLE_ARN variable in repo settings"
+  value       = module.github_oidc.role_arn
+}

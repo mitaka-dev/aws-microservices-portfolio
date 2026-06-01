@@ -324,6 +324,14 @@ resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {
   ip_protocol                  = "tcp"
 }
 
+module "github_oidc" {
+  source      = "../../modules/github-oidc"
+  org         = var.org
+  environment = var.environment
+  github_org  = "mitaka-dev"
+  github_repo = "aws-microservices-portfolio"
+}
+
 module "observability" {
   source = "../../modules/observability"
 

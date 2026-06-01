@@ -1,0 +1,62 @@
+name: Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'API Gateway base URL (leave empty to read from tofu output)'
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke:
+    name: k6 smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Resolve base URL
+        id: url
+        run: |
+          BASE_URL="${{ inputs.base_url }}"
+          if [ -z "$BASE_URL" ]; then
+            echo "No base_url provided — reading from tofu output"
+            pip install --quiet opentofu 2>/dev/null || true
+
+            # Install OpenTofu to read state output
+            curl -fsSL https://get.opentofu.org/install-opentofu.sh \
+              | sudo env OPENTOFU_VERSION=1.9.0 sh -s -- --install-method standalone
+
+            cd infra/envs/dev
+            tofu init -reconfigure
+            BASE_URL=$(tofu output -raw api_gateway_endpoint)
+          fi
+          # Strip trailing slash
+          BASE_URL="${BASE_URL%/}"
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Using BASE_URL: $BASE_URL"
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q
+          sudo apt-get install -y k6
+
+      - name: Run k6 smoke test
+        run: k6 run --env BASE_URL="${{ steps.url.outputs.base_url }}" tests/load/smoke.js

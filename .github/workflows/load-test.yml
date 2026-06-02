@@ -3,8 +3,20 @@ name: Load Test
 on:
   workflow_dispatch:
     inputs:
+      test_script:
+        description: 'Test to run'
+        required: false
+        type: choice
+        default: smoke
+        options:
+          - smoke
+          - autoscale
       base_url:
         description: 'API Gateway base URL (leave empty to read from tofu output)'
+        required: false
+        type: string
+      token:
+        description: 'Cognito JWT Bearer token for authenticated endpoints'
         required: false
         type: string
 
@@ -13,9 +25,10 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
-    name: k6 smoke test
+  load-test:
+    name: k6 ${{ inputs.test_script || 'smoke' }} test
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +44,6 @@ jobs:
           BASE_URL="${{ inputs.base_url }}"
           if [ -z "$BASE_URL" ]; then
             echo "No base_url provided — reading from tofu output"
-            pip install --quiet opentofu 2>/dev/null || true
 
             # Install OpenTofu to read state output
             curl -fsSL https://get.opentofu.org/install-opentofu.sh \
@@ -58,5 +70,12 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y k6
 
-      - name: Run k6 smoke test
-        run: k6 run --env BASE_URL="${{ steps.url.outputs.base_url }}" tests/load/smoke.js
+      - name: Run k6 ${{ inputs.test_script || 'smoke' }}
+        env:
+          TOKEN: ${{ inputs.token }}
+        run: |
+          SCRIPT="tests/load/${{ inputs.test_script || 'smoke' }}.js"
+          k6 run \
+            --env BASE_URL="${{ steps.url.outputs.base_url }}" \
+            ${TOKEN:+--env TOKEN="$TOKEN"} \
+            "$SCRIPT"

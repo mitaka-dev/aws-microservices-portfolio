@@ -99,6 +99,7 @@ aws-microservices-portfolio/
 │   ├── down.sh            tofu destroy
 │   ├── get-token.sh       Cognito user creation + JWT
 │   ├── run-load-test.sh   Resolve BASE_URL + TOKEN, then run a k6 test
+│   ├── aws-status.sh      Account health: costs, running resources, alarms, CI status
 │   └── build-and-push.sh  Maven build + Docker multi-stage + ECR push
 ├── tests/
 │   ├── e2e-local.sh       17-step integration test against Docker Compose stack

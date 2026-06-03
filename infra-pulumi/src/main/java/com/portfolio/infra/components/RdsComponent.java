@@ -28,6 +28,7 @@ import java.util.Map;
 public class RdsComponent extends ComponentResource {
 
     private final Output<String> instanceArn;
+    private final Output<String> instanceAddress;
     private final Output<String> instanceEndpoint;
     private final Output<String> secretArn;
     private final Output<String> sgId;
@@ -99,12 +100,14 @@ public class RdsComponent extends ComponentResource {
 
         // ── Outputs ───────────────────────────────────────────────────────────
         this.instanceArn      = db.arn();
+        this.instanceAddress  = db.address();
         this.instanceEndpoint = db.endpoint();
         this.secretArn        = secret.arn();
         this.sgId             = rdsSg.id();
 
         this.registerOutputs(Map.of(
                 "instanceArn",      this.instanceArn,
+                "instanceAddress",  this.instanceAddress,
                 "instanceEndpoint", this.instanceEndpoint,
                 "secretArn",        this.secretArn,
                 "sgId",             this.sgId
@@ -112,6 +115,7 @@ public class RdsComponent extends ComponentResource {
     }
 
     public Output<String> instanceArn()      { return instanceArn; }
+    public Output<String> instanceAddress()  { return instanceAddress; }
     public Output<String> instanceEndpoint() { return instanceEndpoint; }
     public Output<String> secretArn()        { return secretArn; }
     public Output<String> sgId()             { return sgId; }

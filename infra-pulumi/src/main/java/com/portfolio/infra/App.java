@@ -1,6 +1,7 @@
 package com.portfolio.infra;
 
 import com.pulumi.Pulumi;
+import com.pulumi.aws.AwsFunctions;
 import com.portfolio.infra.components.AlbComponent;
 import com.portfolio.infra.components.ApiGatewayComponent;
 import com.portfolio.infra.components.CloudMapComponent;
@@ -9,17 +10,21 @@ import com.portfolio.infra.components.DynamoDbComponent;
 import com.portfolio.infra.components.EcrComponent;
 import com.portfolio.infra.components.EcsClusterComponent;
 import com.portfolio.infra.components.ElastiCacheComponent;
+import com.portfolio.infra.components.EcsServiceComponent;
 import com.portfolio.infra.components.NetworkComponent;
 import com.portfolio.infra.components.RdsComponent;
 import com.portfolio.infra.components.S3Component;
 import com.portfolio.infra.components.SnsSqsComponent;
 
+import java.util.List;
+
 public class App {
     public static void main(String[] args) {
         Pulumi.run(ctx -> {
-            var config = ctx.config();
-            var org = config.require("org");
-            var env = config.require("environment");
+            var config    = ctx.config();
+            var org       = config.require("org");
+            var env       = config.require("environment");
+            var awsRegion = AwsFunctions.getRegion().applyValue(r -> r.name());
 
             // Step 2 — foundational (no deps between them)
             var network = new NetworkComponent(org, env);
@@ -40,6 +45,67 @@ public class App {
             var cloudMap    = new CloudMapComponent(org, env, network);
             var snsSqs      = new SnsSqsComponent(org, env);
             var s3          = new S3Component(org, env);
+
+            // Step 6 — ECS services (×4)
+            var userSvc = new EcsServiceComponent(org, env, ecsCluster, network, alb, cognito,
+                    EcsServiceComponent.Config.builder()
+                            .serviceName("user-service")
+                            .imageUri(ecr.repositoryUrls().get("user-service"))
+                            .listenerRulePriority(100)
+                            .awsRegion(awsRegion)
+                            .pathPatterns(List.of("/users", "/users/*"))
+                            .rdsAddress(rds.instanceAddress())
+                            .rdsSecretArn(rds.secretArn())
+                            .dbName("userdb")
+                            .albArnSuffix(alb.arnSuffix())
+                            .build());
+
+            var catalogSvc = new EcsServiceComponent(org, env, ecsCluster, network, alb, cognito,
+                    EcsServiceComponent.Config.builder()
+                            .serviceName("catalog-service")
+                            .imageUri(ecr.repositoryUrls().get("catalog-service"))
+                            .listenerRulePriority(110)
+                            .awsRegion(awsRegion)
+                            .pathPatterns(List.of("/catalog", "/catalog/*"))
+                            .dynamoTableArn(dynamoDb.tableArn())
+                            .dynamoTableName(dynamoDb.tableName())
+                            .redisEndpoint(elastiCache.primaryEndpoint())
+                            .cloudMapNamespaceId(cloudMap.namespaceId())
+                            .enableCloudMap(true)
+                            .albArnSuffix(alb.arnSuffix())
+                            .build());
+
+            var orderSvc = new EcsServiceComponent(org, env, ecsCluster, network, alb, cognito,
+                    EcsServiceComponent.Config.builder()
+                            .serviceName("order-service")
+                            .imageUri(ecr.repositoryUrls().get("order-service"))
+                            .listenerRulePriority(120)
+                            .awsRegion(awsRegion)
+                            .pathPatterns(List.of("/orders", "/orders/*"))
+                            .rdsAddress(rds.instanceAddress())
+                            .rdsSecretArn(rds.secretArn())
+                            .dbName("userdb")
+                            .snsTopicArn(snsSqs.topicArn())
+                            .sqsQueueUrl(snsSqs.queueUrl())
+                            .sqsQueueArn(snsSqs.queueArn())
+                            .cloudMapNamespaceId(cloudMap.namespaceId())
+                            .enableCloudMap(true)
+                            .albArnSuffix(alb.arnSuffix())
+                            .build());
+
+            var fileSvc = new EcsServiceComponent(org, env, ecsCluster, network, alb, cognito,
+                    EcsServiceComponent.Config.builder()
+                            .serviceName("file-service")
+                            .imageUri(ecr.repositoryUrls().get("file-service"))
+                            .listenerRulePriority(130)
+                            .awsRegion(awsRegion)
+                            .pathPatterns(List.of("/files", "/files/*"))
+                            .s3BucketName(s3.bucketName())
+                            .s3BucketArn(s3.bucketArn())
+                            .cloudMapNamespaceId(cloudMap.namespaceId())
+                            .enableCloudMap(true)
+                            .albArnSuffix(alb.arnSuffix())
+                            .build());
 
             // Stack outputs
             ctx.export("vpcId",              network.vpcId());

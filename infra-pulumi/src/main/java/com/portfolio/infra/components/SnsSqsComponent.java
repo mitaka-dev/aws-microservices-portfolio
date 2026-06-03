@@ -24,7 +24,9 @@ public class SnsSqsComponent extends ComponentResource {
 
     private final Output<String> topicArn;
     private final Output<String> queueArn;
+    private final Output<String> queueName;
     private final Output<String> dlqArn;
+    private final Output<String> dlqName;
     private final Output<String> queueUrl;
 
     public SnsSqsComponent(String org, String env) {
@@ -84,21 +86,27 @@ public class SnsSqsComponent extends ComponentResource {
                 .build(), opts);
 
         // ── Outputs ───────────────────────────────────────────────────────────
-        this.topicArn = topic.arn();
-        this.queueArn = queue.arn();
-        this.dlqArn   = dlq.arn();
-        this.queueUrl = queue.url();
+        this.topicArn  = topic.arn();
+        this.queueArn  = queue.arn();
+        this.queueName = queue.name();
+        this.dlqArn    = dlq.arn();
+        this.dlqName   = dlq.name();
+        this.queueUrl  = queue.url();
 
         this.registerOutputs(Map.of(
-                "topicArn", this.topicArn,
-                "queueArn", this.queueArn,
-                "dlqArn",   this.dlqArn,
-                "queueUrl", this.queueUrl
+                "topicArn",  this.topicArn,
+                "queueArn",  this.queueArn,
+                "queueName", this.queueName,
+                "dlqArn",    this.dlqArn,
+                "dlqName",   this.dlqName,
+                "queueUrl",  this.queueUrl
         ));
     }
 
-    public Output<String> topicArn() { return topicArn; }
-    public Output<String> queueArn() { return queueArn; }
-    public Output<String> dlqArn()   { return dlqArn; }
-    public Output<String> queueUrl() { return queueUrl; }
+    public Output<String> topicArn()  { return topicArn; }
+    public Output<String> queueArn()  { return queueArn; }
+    public Output<String> queueName() { return queueName; }
+    public Output<String> dlqArn()    { return dlqArn; }
+    public Output<String> dlqName()   { return dlqName; }
+    public Output<String> queueUrl()  { return queueUrl; }
 }

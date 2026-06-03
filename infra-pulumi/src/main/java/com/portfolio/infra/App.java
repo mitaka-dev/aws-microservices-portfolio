@@ -11,7 +11,9 @@ import com.portfolio.infra.components.EcrComponent;
 import com.portfolio.infra.components.EcsClusterComponent;
 import com.portfolio.infra.components.ElastiCacheComponent;
 import com.portfolio.infra.components.EcsServiceComponent;
+import com.portfolio.infra.components.GithubOidcComponent;
 import com.portfolio.infra.components.NetworkComponent;
+import com.portfolio.infra.components.ObservabilityComponent;
 import com.portfolio.infra.components.RdsComponent;
 import com.portfolio.infra.components.S3Component;
 import com.portfolio.infra.components.SnsSqsComponent;
@@ -21,10 +23,13 @@ import java.util.List;
 public class App {
     public static void main(String[] args) {
         Pulumi.run(ctx -> {
-            var config    = ctx.config();
-            var org       = config.require("org");
-            var env       = config.require("environment");
-            var awsRegion = AwsFunctions.getRegion().applyValue(r -> r.name());
+            var config     = ctx.config();
+            var org        = config.require("org");
+            var env        = config.require("environment");
+            var alarmEmail = config.require("alarm_email");
+            var githubOrg  = config.require("github_org");
+            var githubRepo = config.require("github_repo");
+            var awsRegion  = AwsFunctions.getRegion().applyValue(r -> r.name());
 
             // Step 2 — foundational (no deps between them)
             var network = new NetworkComponent(org, env);
@@ -107,19 +112,39 @@ public class App {
                             .albArnSuffix(alb.arnSuffix())
                             .build());
 
+            // Step 7 — security + observability
+            var oidc = new GithubOidcComponent(org, env, githubOrg, githubRepo);
+
+            var obs = new ObservabilityComponent(org, env, alarmEmail,
+                    awsRegion, ecsCluster.clusterName(),
+                    com.pulumi.core.Output.of(org + "-" + env + "-postgres"),
+                    snsSqs.queueName(), snsSqs.dlqName(),
+                    dynamoDb.tableName(), alb.arnSuffix(),
+                    List.of(
+                            new ObservabilityComponent.ServiceInfo("user-service",
+                                    userSvc.ecsServiceName(), userSvc.targetGroupArnSuffix()),
+                            new ObservabilityComponent.ServiceInfo("catalog-service",
+                                    catalogSvc.ecsServiceName(), catalogSvc.targetGroupArnSuffix()),
+                            new ObservabilityComponent.ServiceInfo("order-service",
+                                    orderSvc.ecsServiceName(), orderSvc.targetGroupArnSuffix()),
+                            new ObservabilityComponent.ServiceInfo("file-service",
+                                    fileSvc.ecsServiceName(), fileSvc.targetGroupArnSuffix())));
+
             // Stack outputs
-            ctx.export("vpcId",              network.vpcId());
-            ctx.export("apiGatewayEndpoint", apiGw.apiEndpoint());
-            ctx.export("cognitoUserPoolId",  cognito.userPoolId());
-            ctx.export("cognitoAppClientId", cognito.appClientId());
-            ctx.export("ecrUserServiceUrl",  ecr.repositoryUrls().get("user-service"));
-            ctx.export("rdsEndpoint",        rds.instanceEndpoint());
-            ctx.export("catalogTableName",   dynamoDb.tableName());
-            ctx.export("redisEndpoint",      elastiCache.primaryEndpoint());
-            ctx.export("ecsClusterArn",      ecsCluster.clusterArn());
+            ctx.export("vpcId",               network.vpcId());
+            ctx.export("apiGatewayEndpoint",  apiGw.apiEndpoint());
+            ctx.export("cognitoUserPoolId",   cognito.userPoolId());
+            ctx.export("cognitoAppClientId",  cognito.appClientId());
+            ctx.export("ecrUserServiceUrl",   ecr.repositoryUrls().get("user-service"));
+            ctx.export("ciRoleArn",           oidc.roleArn());
+            ctx.export("rdsEndpoint",         rds.instanceEndpoint());
+            ctx.export("catalogTableName",    dynamoDb.tableName());
+            ctx.export("redisEndpoint",       elastiCache.primaryEndpoint());
+            ctx.export("ecsClusterArn",       ecsCluster.clusterArn());
             ctx.export("cloudMapNamespaceId", cloudMap.namespaceId());
-            ctx.export("ordersTopicArn",     snsSqs.topicArn());
-            ctx.export("filesBucketName",    s3.bucketName());
+            ctx.export("ordersTopicArn",      snsSqs.topicArn());
+            ctx.export("filesBucketName",     s3.bucketName());
+            ctx.export("alarmTopicArn",       obs.alarmTopicArn());
         });
     }
 }

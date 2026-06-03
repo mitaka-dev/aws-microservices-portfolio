@@ -72,7 +72,7 @@ Honest assessment of what I'd change for a production system at real scale:
 | **Database** | RDS `db.t4g.micro`, single-AZ | Aurora PostgreSQL, multi-AZ, Serverless v2 | Automatic failover, storage auto-scaling, ~1/10 the ops surface |
 | **Compute** | ECS Fargate | EKS + Karpenter | Better bin-packing, Spot support, richer ecosystem (Argo, KEDA) once you have >5 teams |
 | **Service mesh** | Cloud Map DNS | App Mesh / Istio | mTLS between services, traffic splitting for canary deploys, circuit breaking at the mesh layer |
-| **Edge security** | None | AWS WAF + Shield Standard | SQL injection protection, rate limiting, DDoS mitigation |
+| **Edge security** | API GW throttling (500 RPS / 1000 burst) + WAF managed rules (OWASP Top 10) | Shield Advanced | Shield Advanced ($3k/month) adds dedicated support and L7 DDoS protection — overkill here; Shield Standard is free and already active |
 | **Availability** | Single region | Active-active multi-region + DynamoDB global tables | Required for regulated industries or sub-100ms global latency targets |
 | **Repo structure** | Monorepo | One repo per service | Team autonomy, independent deploy cadences, smaller CI blast radius |
 | **Secrets rotation** | Secrets Manager, manual rotation | External Secrets Operator + HashiCorp Vault | Centralised rotation policies, audit trail, cloud-agnostic |

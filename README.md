@@ -6,6 +6,7 @@ Four production-grade microservices on AWS ECS Fargate: user management, product
 ![Java 25](https://img.shields.io/badge/Java-25-blue)
 ![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0.6-green)
 ![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-purple)
+![Pulumi Java](https://img.shields.io/badge/IaC-Pulumi%20Java-blueviolet)
 
 ## Architecture
 
@@ -20,7 +21,7 @@ Four production-grade microservices on AWS ECS Fargate: user management, product
 **Messaging:** SNS, SQS (with DLQ)  
 **Observability:** X-Ray, CloudWatch Metrics, CloudWatch Logs, CloudWatch Dashboard, CloudWatch Alarms, ADOT (OpenTelemetry Collector), OTel Java agent  
 **CI/CD:** ECR, GitHub Actions  
-**IaC:** OpenTofu (Terraform-compatible), S3 remote state  
+**IaC:** OpenTofu (Terraform-compatible) + Pulumi Java SDK 0.11.0 (parallel implementation), S3 remote state  
 **Secrets:** AWS Secrets Manager  
 
 ## Quickstart
@@ -90,6 +91,7 @@ aws-microservices-portfolio/
 ├── infra/
 │   ├── envs/dev/          OpenTofu root module (~180 resources, Phases 1–7)
 │   └── modules/           Reusable modules: network, ecs-service, alb, rds, ...
+├── infra-pulumi/          Pulumi Java SDK parallel IaC — same ~180 resources, 15 ComponentResources
 ├── .github/workflows/
 │   ├── ci.yml             Test on PR · build+push+deploy on push to main (git-diff detection)
 │   ├── infra.yml          tofu plan on infra/** PRs · tofu apply on dispatch

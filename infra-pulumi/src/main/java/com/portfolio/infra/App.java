@@ -1,6 +1,9 @@
 package com.portfolio.infra;
 
 import com.pulumi.Pulumi;
+import com.portfolio.infra.components.AlbComponent;
+import com.portfolio.infra.components.ApiGatewayComponent;
+import com.portfolio.infra.components.CognitoComponent;
 import com.portfolio.infra.components.EcrComponent;
 import com.portfolio.infra.components.NetworkComponent;
 
@@ -15,12 +18,17 @@ public class App {
             var network = new NetworkComponent(org, env);
             var ecr     = new EcrComponent(org, env);
 
-            // Stack outputs — more will be added in subsequent steps
-            ctx.export("vpcId",           network.vpcId());
-            ctx.export("publicSubnetIds",  network.publicSubnetIds());
-            ctx.export("privateSubnetIds", network.privateSubnetIds());
-            ctx.export("ecrRepositoryUrls", ecr.repositoryUrls()
-                    .get("user-service"));
+            // Step 3 — auth + API layer
+            var cognito = new CognitoComponent(org, env);
+            var alb     = new AlbComponent(org, env, network);
+            var apiGw   = new ApiGatewayComponent(org, env, network, cognito, alb);
+
+            // Stack outputs
+            ctx.export("vpcId",             network.vpcId());
+            ctx.export("apiGatewayEndpoint", apiGw.apiEndpoint());
+            ctx.export("cognitoUserPoolId",  cognito.userPoolId());
+            ctx.export("cognitoAppClientId", cognito.appClientId());
+            ctx.export("ecrUserServiceUrl",  ecr.repositoryUrls().get("user-service"));
         });
     }
 }

@@ -1,0 +1,7 @@
+config:
+  aws:region: eu-west-1
+  org: portfolio
+  environment: dev
+  alarm_email: dpttraykov@gmail.com
+  github_org: mitaka-dev
+  github_repo: aws-microservices-portfolio

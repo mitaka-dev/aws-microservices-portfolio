@@ -1,0 +1,6 @@
+name: aws-microservices-portfolio
+runtime:
+  name: java
+  options:
+    binary: target/infra-pulumi-1.0-SNAPSHOT-jar-with-dependencies.jar
+description: AWS microservices portfolio — Pulumi Java (parallel to OpenTofu)

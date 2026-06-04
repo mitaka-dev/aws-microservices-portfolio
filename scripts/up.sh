@@ -2,7 +2,8 @@
 set -euo pipefail
 
 export AWS_PROFILE="${AWS_PROFILE:-aws-microservices-portfolio}"
-INFRA_DIR="infra/envs/dev"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INFRA_DIR="$REPO_ROOT/infra/envs/dev"
 
 echo "==> Initialising OpenTofu..."
 tofu -chdir="$INFRA_DIR" init -reconfigure

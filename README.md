@@ -96,20 +96,73 @@ aws-microservices-portfolio/
 ├── .github/workflows/
 │   ├── ci.yml             Test on PR · build+push+deploy on push to main (git-diff detection)
 │   ├── infra.yml          tofu plan on infra/** PRs · tofu apply on dispatch
-│   └── load-test.yml      k6 smoke on dispatch
+│   └── load-test.yml      k6 smoke or autoscale test on dispatch (choice input)
 ├── scripts/
 │   ├── up.sh              tofu plan + apply
 │   ├── down.sh            tofu destroy
 │   ├── get-token.sh       Cognito user creation + JWT
+│   ├── run-load-test.sh   Resolve BASE_URL + TOKEN, then run a k6 test
+│   ├── aws-status.sh      Account health: costs, running resources, alarms, CI status
 │   └── build-and-push.sh  Maven build + Docker multi-stage + ECR push
 ├── tests/
 │   ├── e2e-local.sh       17-step integration test against Docker Compose stack
 │   ├── e2e-aws.sh         Same suite against deployed AWS environment
-│   └── load/              k6: smoke.js · scale.js (triggers auto-scaling) · order-flow.js
+│   └── load/              k6: smoke.js · scale.js · order-flow.js · autoscale.js
 └── docs/
     ├── decisions/         Architecture Decision Records (ADRs 001–007)
     └── diagrams/          Architecture diagram source (.mmd)
 ```
+
+## Running Tests
+
+```bash
+# Unit + integration tests (Testcontainers spins up Postgres, Redis, LocalStack)
+./mvnw verify
+
+# Single-service build
+./mvnw -pl user-service -am verify
+
+# Local end-to-end
+docker compose up -d
+./tests/e2e-local.sh
+
+# AWS end-to-end (requires running stack)
+./tests/e2e-aws.sh
+```
+
+## Load Testing
+
+`scripts/run-load-test.sh` resolves the API endpoint and Cognito token automatically from OpenTofu state, then hands off to k6.
+
+```bash
+# Auto-scaling lifecycle test (~23 min) — the main demo
+./scripts/run-load-test.sh autoscale
+
+# Quick smoke test — validates all endpoints respond
+./scripts/run-load-test.sh smoke
+
+# Full order workflow at 3 concurrent users
+./scripts/run-load-test.sh order-flow
+
+# Simple scale trigger — ramps to 20 VUs over 6 min
+./scripts/run-load-test.sh scale
+```
+
+### What `autoscale` demonstrates
+
+The test runs seven stages against all four services simultaneously:
+
+| Stage | VUs | Duration | What to watch in CloudWatch |
+|---|---|---|---|
+| 1 – Idle | 2 | 2 min | 1 task per service, p95 < 500 ms |
+| 2 – Ramp | 2 → 30 | 3 min | `ECS RunningTaskCount` climbs 1 → 2 → 3 |
+| 3 – Sustain | 30 | 5 min | ~225 req/s, all 3 tasks stable |
+| 4 – Peak ramp | 30 → 50 | 2 min | ALB `RequestCountPerTarget` at ceiling |
+| 5 – Hold peak | 50 | 3 min | Latency characterisation at max capacity |
+| 6 – Ramp down | 50 → 0 | 2 min | Scale-in cooldown begins (300 s) |
+| 7 – Cooldown | 0 | 6 min | `ECS RunningTaskCount` drops back to 1 |
+
+Auto-scaling is configured with a 50 req/min/task ALB target and 70 % CPU target; 30 VUs already saturates the 3-task maximum, so you see all scale-out events within the first 5 minutes.
 
 ## Architecture Decisions
 

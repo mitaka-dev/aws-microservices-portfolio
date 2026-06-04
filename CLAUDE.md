@@ -2,11 +2,10 @@
 
 ## Project
 
-Four-service AWS portfolio: `user-service`, `catalog-service`, `order-service`, `file-service`.
-Stack: Java 25, Spring Boot 4.0.6, Maven multi-module monorepo, ECS Fargate, OpenTofu, PostgreSQL/DynamoDB, Redis, SQS, gRPC, Cognito JWT.
+Five-service AWS portfolio: `user-service`, `catalog-service`, `order-service`, `file-service`, `payment-service`.
+Stack: Java 25, Spring Boot 4.0.6, Maven multi-module monorepo, ECS Fargate, OpenTofu, PostgreSQL/DynamoDB, Redis, SNS, gRPC, Cognito JWT.
 
 ## Rules
-- Always before starting new phase ask to create a new branch for that phase.
 - **Never run `tofu apply`** without showing `tofu plan` output first and getting approval.
 - Never commit `.tfstate`, `.env`, or AWS credentials. Remote state in S3 only.
 - Pin all OpenTofu provider/module versions (`required_version`, `required_providers`).
@@ -27,7 +26,25 @@ docker compose up -d                         # start Postgres + Redis
 
 ## Module Status
 
-Only `user-service` and `proto-shared` are real modules. `catalog-service`, `order-service`, and `file-service` contain only `.gitkeep` placeholders — do not create source files in them until their build-plan phase.
+All 5 service modules are fully implemented:
+- `proto-shared` — shared gRPC stubs (`catalog.proto`, `payment.proto`, `user.proto`)
+- `user-service` — REST, PostgreSQL, Cognito JWT, Flyway
+- `catalog-service` — REST + gRPC server, DynamoDB, Redis cache
+- `order-service` — REST, PostgreSQL, gRPC clients (catalog + payment), SNS publish, outbox (Phase 9)
+- `file-service` — REST, S3 presigned URLs
+- `payment-service` — gRPC server only (no ALB), Strategy pattern, PostgreSQL. Autoscales on CPU only (no ALB target group = no ALBRequestCountPerTarget). Revisit if load tests show it as a bottleneck.
+
+## Infrastructure Source of Truth
+
+**OpenTofu is the primary IaC implementation.** `infra/` is the real infrastructure — all changes go here first.
+
+`infra-pulumi/` is a Pulumi Java port that mirrors OpenTofu exactly. 
+**Never change Pulumi first.** The workflow is:
+1. Design and implement the change in `infra/` (OpenTofu)
+2. Run `tofu plan` / `tofu apply` to validate
+3. Port the equivalent change to `infra-pulumi/` (Pulumi Java)
+
+If OpenTofu and Pulumi diverge, OpenTofu wins.
 
 ## Networking
 
@@ -86,6 +103,12 @@ SB 4.0.3 used Spring Framework 7.0.5 which had a bug where `@BootstrapWith`
 traversal always failed even in-process. SB 4.0.6 (Spring Framework 7.0.7) 
 partially fixes it — still needs the two-part forked-JVM fix above.
 
+### 9. Dockerfile — copy the exec jar, not `*.jar`
+
+The `spring-boot-maven-plugin` with `<classifier>exec</classifier>` produces two jars: `*-SNAPSHOT.jar` (thin) and `*-SNAPSHOT-exec.jar` (fat). A `*.jar` glob in `COPY --from=builder` matches both and fails. Always use:
+
+COPY --from=builder /build/<service>/target/*-exec.jar app.jar
+
 ### 10. `SqsAutoConfiguration` — exclude and wire manually
 
 `SqsAutoConfiguration` (spring-cloud-aws 3.4.0) calls `PropertyMapper.alwaysApplyingWhenNonNull()` which was removed in SB4. Fix:
@@ -100,11 +123,7 @@ spring.autoconfigure.exclude:
 
 `SnsAutoConfiguration` does NOT have this issue — `SnsTemplate` autoconfigures fine.
 
-### 9. Dockerfile — copy the exec jar, not `*.jar`
-
-The `spring-boot-maven-plugin` with `<classifier>exec</classifier>` produces two jars: `*-SNAPSHOT.jar` (thin) and `*-SNAPSHOT-exec.jar` (fat). A `*.jar` glob in `COPY --from=builder` matches both and fails. Always use:
-
-COPY --from=builder /build/<service>/target/*-exec.jar app.jar
+> **Note:** The SQS consumer was removed from `order-service` in Phase 8. This workaround applies to any service that re-introduces `SqsAsyncClient` (e.g. Phase 9 saga recovery job if it consumes from SQS).
 
 ### 11. `CloudWatchExportAutoConfiguration` — exclude in all services
 

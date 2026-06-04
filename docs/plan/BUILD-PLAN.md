@@ -14,7 +14,7 @@ This project keeps **all services, shared code, infrastructure, tests, and docs 
 
 - **Atomic cross-service changes.** Update a shared `.proto` and all consumers in one PR.
 - **One CI pipeline, one set of tooling, one architecture diagram.**
-- **Less ceremony than 4–6 repos for a 4-service project.**
+- **Less ceremony than 5–6 repos for a 5-service project.**
 
 > In the README, explicitly note: "Monorepo by choice for this project; in a larger org with multiple teams I'd consider splitting based on ownership boundaries." That sentence demonstrates understanding of the tradeoff.
 
@@ -40,12 +40,20 @@ This project keeps **all services, shared code, infrastructure, tests, and docs 
             │   RDS   │  │ DynamoDB │    │   │       │   S3    │
             │PostgreSQL│  │ + Redis  │   │   │       └─────────┘
             └─────────┘  └──────────┘    │   │
-                                         │   │  gRPC via Cloud Map
+                                         │   │  gRPC (sync, Cloud Map DNS)
                                          │   ▼
-                                    ┌────▼─────────┐
-                                    │ SNS → SQS    │
-                                    │ (async events)│
-                                    └──────────────┘
+                                    ┌────▼──────────────┐
+                                    │  payment-service  │
+                                    │  (gRPC :9090,     │
+                                    │   no ALB)         │
+                                    └────────┬──────────┘
+                                             │
+                                        ┌────▼────┐
+                                        │   RDS   │
+                                        │PostgreSQL│
+                                        └─────────┘
+                                    SNS (OrderConfirmed,
+                                    outbox-guaranteed)
 ```
 
 ### Tech Stack
@@ -67,7 +75,9 @@ This project keeps **all services, shared code, infrastructure, tests, and docs 
 | SQL | RDS PostgreSQL (`db.t4g.micro`, single-AZ) |
 | NoSQL | DynamoDB (on-demand) |
 | Cache | ElastiCache Redis (`cache.t4g.micro`, single node) |
-| Async | SNS → SQS |
+| Async | SNS (outbox-guaranteed delivery) |
+| Payments | gRPC + Strategy pattern (CREDIT_CARD / PAYPAL / BANK_TRANSFER) |
+| Resilience | Saga pattern + compensating transactions + Outbox |
 | Files | S3 (presigned URLs) |
 | Secrets | AWS Secrets Manager + SSM Parameter Store |
 | Registry | ECR |
@@ -185,7 +195,7 @@ aws-microservices-portfolio/
 - **Java 25** via `<maven.compiler.release>25</maven.compiler.release>`.
 - **Spring Boot 4** managed via the BOM in `<dependencyManagement>`.
 - **AWS SDK v2 BOM** in `<dependencyManagement>` so all child modules share versions.
-- **Spring Cloud AWS BOM** for `@SqsListener`, Secrets Manager integration, etc.
+- **Spring Cloud AWS BOM** for SNS/Secrets Manager integration, etc.
 - **Grpc-Java + protobuf-maven-plugin** declared in `proto-shared` module.
 - Common plugin config (Surefire, Failsafe for IT tests, Jib or Spring Boot's `build-image` for OCI images) declared in `<pluginManagement>`.
 - `mvnw` wrapper committed so reviewers don't need Maven installed.
@@ -205,7 +215,7 @@ payment-service  ──►  proto-shared
 
 ---
 
-## 3. Build Plan — 12 Phases
+## 3. Build Plan — 13 Phases
 
 > Each phase is a self-contained Claude Code task. Complete and verify each before moving on. Commit after every phase.
 
@@ -321,13 +331,14 @@ payment-service  ──►  proto-shared
 - Cloud Map service registration under namespace `internal.local`.
 - ALB listener rule for `/catalog/*`.
 
-**`order-service` (SNS → SQS + gRPC client)**
-- SNS topic `orders-events`.
-- SQS queue `orders-processing` subscribed to the SNS topic (plus DLQ with `maxReceiveCount=3`).
-- Spring Cloud AWS `@SqsListener` consuming from the queue.
-- gRPC client → calls `catalog-service` via Cloud Map DNS (`catalog-service.internal.local:9090`).
-- **The flow:** `POST /orders` → save order in Postgres → publish `OrderCreated` to SNS → return 201. A `@SqsListener` in the same service (or a worker) consumes the event and calls `catalog-service` via gRPC to decrement stock.
+**`order-service` (gRPC orchestrator + SNS)**
+- SNS topic `orders-events` (SQS queue + DLQ provisioned in OpenTofu for future consumers).
+- gRPC client → `catalog-service` via Cloud Map DNS (`catalog-service.internal.local:9090`).
+- gRPC client → `payment-service` via Cloud Map DNS (`payment-service.internal.local:9090`).
+- **The flow:** `POST /orders` → save PENDING → sync gRPC payment → sync gRPC stock decrement → save CONFIRMED → publish `OrderConfirmed` to SNS → return 201.
 - ALB listener rule for `/orders/*`.
+
+> **Note:** The original async flow (`OrderCreated` → SQS consumer → DecrementStock) was replaced in Phase 8 with synchronous gRPC orchestration. The SQS consumer (`@SqsListener`, `SqsMessagePoller`) was removed. Phase 9 adds a full saga with compensation and an outbox for reliable SNS delivery.
 
 **`file-service` (S3 presigned URLs)**
 - S3 bucket: private, versioned, SSE-S3 encryption, public access blocked, lifecycle policy "delete incomplete multipart uploads after 7 days".
@@ -481,7 +492,99 @@ payment-service  ──►  proto-shared
 
 ---
 
-### Phase 9 — Grafana + Amazon OpenSearch (ELK)
+### Phase 9 — Saga Pattern + Outbox
+- [ ] **Not started**
+
+**Goal:** Make the `POST /orders` flow resilient to partial failures across service boundaries. Introduce an explicit order state machine (PENDING → PAID → CONFIRMED), a compensating transaction (refund) when stock decrement fails, and the outbox pattern to guarantee SNS event delivery survives pod crashes.
+
+**Problem being solved:**
+- Current flow calls payment gRPC, then stock gRPC, then publishes SNS — all in one `@Transactional`. If stock decrement fails after payment succeeded, the `@Transactional` rollback only affects order-service's DB. Payment record in payment-service is already committed — customer is charged, order is not confirmed.
+- If the pod crashes after `save(CONFIRMED)` but before `publishOrderConfirmed()`, the SNS event is lost — downstream systems never hear about it.
+
+**State machine:**
+```
+PENDING → PAID → CONFIRMED
+   │         │
+   ▼         ▼
+FAILED  COMPENSATING → FAILED
+```
+
+**Tasks:**
+
+1. **`OrderStatus`** — add `PAID`, `COMPENSATING`.
+
+2. **`payment.proto`** — add `RefundPayment` RPC to `proto-shared`:
+   ```protobuf
+   rpc RefundPayment(RefundRequest) returns (RefundResponse);
+   message RefundRequest  { string payment_id = 1; string reason = 2; }
+   message RefundResponse { bool success = 1; }
+   ```
+   Rebuild stubs: `./mvnw -pl proto-shared clean install`.
+
+3. **Flyway migrations in order-service:**
+   - `V2__add_order_paid_status.sql` — add `payment_id VARCHAR(36)` column to `orders`.
+   - `V3__create_outbox_events.sql`:
+     ```sql
+     CREATE TABLE outbox_events (
+         id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+         aggregate_type VARCHAR(100) NOT NULL,
+         aggregate_id   VARCHAR(100) NOT NULL,
+         event_type     VARCHAR(100) NOT NULL,
+         payload        TEXT         NOT NULL,
+         created_at     TIMESTAMP    NOT NULL DEFAULT now(),
+         published_at   TIMESTAMP
+     );
+     CREATE INDEX idx_outbox_unpublished ON outbox_events(created_at)
+         WHERE published_at IS NULL;
+     ```
+
+4. **`Order` entity** — add `paymentId` field.
+
+5. **`OutboxEvent` JPA entity + `OutboxEventRepository`** — `findTop10ByPublishedAtIsNullOrderByCreatedAtAsc()`.
+
+6. **`PaymentGrpcClient`** in order-service — add `refundPayment(String paymentId, String reason)` method using the new proto stub.
+
+7. **`PaymentGrpcService`** in payment-service — implement `refundPayment`: find the `PaymentRecord` by id, set status `REFUNDED`, save.
+
+8. **`OrderService.createOrder()`** — rewrite as explicit saga steps. Remove `@Transactional` from the method itself (each `save()` commits independently as a durable checkpoint):
+   ```
+   save(PENDING)                              ← checkpoint 1
+   gRPC processPayment()
+     └─[FAILED] → save(FAILED), throw 402
+   save(PAID + paymentId)                     ← checkpoint 2 — money taken
+   gRPC decrementStock() per item
+     └─[FAILED] → compensate():
+           save(COMPENSATING)
+           gRPC refundPayment()
+             └─[FAILED] → log ERROR, leave COMPENSATING (recovery job handles it)
+           save(FAILED), throw 500
+   @Transactional: save(CONFIRMED) + outbox row  ← checkpoint 3 — atomic
+   return 201
+   ```
+
+9. **`OutboxPoller`** — `SmartLifecycle` that runs every 5 seconds:
+   - Fetch up to 10 unpublished outbox rows.
+   - `snsTemplate.sendNotification(topicArn, payload, eventType)` per row.
+   - `outboxEventRepository.markPublished(id, Instant.now())` on success.
+   - On SNS failure: log and leave unpublished — next poll retries automatically.
+
+10. **`OrderRecoveryJob`** — `@Scheduled(fixedDelay = 300_000)` (every 5 min):
+    - `SELECT * FROM orders WHERE status = 'COMPENSATING' AND updated_at < now() - interval '5 minutes'`.
+    - Retry `paymentGrpcClient.refundPayment()` for each.
+    - On success: set `FAILED`, save.
+    - On failure: log ERROR with orderId + paymentId for manual intervention.
+
+11. **IT tests** — update `OrderControllerIT`:
+    - Happy path: assert final status `CONFIRMED`, assert outbox row exists and `published_at` is set after poller runs.
+    - Payment failure: assert status `FAILED`, no outbox row.
+    - Stock failure (mock `CatalogGrpcClient` to throw): assert status transitions `PENDING → PAID → COMPENSATING → FAILED`, assert refund was called.
+    - Recovery job: seed a `COMPENSATING` order, run job, assert `FAILED`.
+
+**Exit criteria:** `./mvnw verify` green. Stock-failure test confirms compensation runs and order ends as `FAILED`. No `COMPENSATING` orders left after recovery job. Outbox poller delivers SNS events — confirmed via LocalStack SNS in IT tests.
+
+---
+
+### Phase 10 — Grafana + Amazon OpenSearch (ELK)
 - [ ] **Not started**
 
 **Goal:** Supplement CloudWatch and X-Ray with two industry-standard tools: **Grafana** for rich shareable dashboards and **Amazon OpenSearch Service** for centralized log search and analytics (ELK pattern). Both are high-visibility CV keywords and demonstrate the ability to wire external observability tooling into an AWS-managed platform.
@@ -537,7 +640,7 @@ payment-service  ──►  proto-shared
 
 ---
 
-### Phase 10 — Code Review & Performance Hardening
+### Phase 11 — Code Review & Performance Hardening
 - [ ] **Not started**
 
 **Goal:** Audit all five services for correctness and performance issues, then apply a focused set of improvements that demonstrate senior-level thinking: right-sized connection pools, resilience patterns, reliable event publishing, Java 25 virtual threads, proper indexing, and pagination.
@@ -558,12 +661,11 @@ payment-service  ──►  proto-shared
    - Follow the `resilience4j-patterns` skill conventions for `application.yml` config.
    - Verify circuit breaker trips under load with a k6 test that targets a deliberately slow path.
 
-3. **Outbox pattern for reliable SNS publishing:**
-   - Add `outbox_events(id, aggregate_type, aggregate_id, event_type, payload, created_at, published_at)` table via Flyway migration in `order-service` (and `payment-service` if it publishes events).
-   - In `@Transactional` order/payment flows: write to `outbox_events` in the same DB transaction instead of calling SNS directly.
-   - Add a `SmartLifecycle` poller (same pattern as `SqsMessagePoller`) that reads unpublished outbox rows, publishes to SNS, and marks `published_at`. Run every 5 seconds.
-   - Guarantees at-least-once delivery; downstream SQS consumers must be idempotent (they already should be).
-   - Follow the `outbox-pattern` skill for implementation details.
+3. **API response consistency audit:**
+   - Ensure all five services return a uniform error body: `{ "error": "message", "status": 400 }`.
+   - Add a `@ControllerAdvice` global exception handler (`GlobalExceptionHandler`) in each service where missing — catches `ResponseStatusException`, `MethodArgumentNotValidException`, and unexpected exceptions.
+   - Audit all endpoints for consistent HTTP status codes (e.g. `POST` → 201, not 200; `DELETE` → 204; resource not found → 404 not 500).
+   - Update IT tests to assert the error response shape, not just the status code.
 
 4. **Virtual threads (Java 25):**
    - Add `spring.threads.virtual.enabled: true` to `application.yml` in all services.
@@ -590,8 +692,8 @@ payment-service  ──►  proto-shared
 
 ---
 
-### Phase 11 — Polish for the CV
-- [ ] **Not started**
+### Final Phase — Polish and Review
+- [x] **Complete**
 
 **Goal:** the repo *is* the artifact. Make it readable in 3 minutes.
 
@@ -623,7 +725,7 @@ payment-service  ──►  proto-shared
 ## 4. Working with Claude Code
 
 ### Recommended workflow
-- **One phase per session.** Don't ask for all 9 at once — context bloats and quality drops.
+- **One phase per session.** Don't ask for all 13 at once — context bloats and quality drops.
 - **Commit after every phase.** Easy to roll back.
 - **Open each session with:**
   > "We're starting Phase N. Repo state: `tree -L 3 -I target`. Plan: [paste this file]. Do Phase N. Show me each file's content before writing it, and run `tofu plan` before any apply."
@@ -665,8 +767,7 @@ payment-service  ──►  proto-shared
 
 ## 6. Stretch Goals (only after Definition of Done)
 
-1. **WAF in front of API Gateway** — one rate-limit rule, trivial to add, recognizable.
-2. **Canary deploys** via CodeDeploy + ECS — progressive rollout.
+1. **Canary deploys** via CodeDeploy + ECS — progressive rollout.
 3. **Multi-AZ RDS** — flip a flag, mention in README.
 4. **DynamoDB Streams → Lambda** — adds an event-driven serverless flow.
 5. **EventBridge** for one cross-service flow — modern messaging.
@@ -681,7 +782,7 @@ payment-service  ──►  proto-shared
 - ❌ Kubernetes / EKS. ECS is the point.
 - ❌ Service mesh (App Mesh, Istio). Cloud Map is enough.
 - ❌ Self-hosted anything (Rabbit, Kafka, Vault, Prometheus). Use AWS-managed.
-- ❌ More than 4 services. Resist the urge.
+- ❌ More than 5 services. Resist the urge.
 - ❌ A custom auth service. Cognito does this.
 - ❌ Aurora at this stage. Plain RDS is the right choice for a portfolio.
 - ❌ Split into multiple repos. Monorepo by design.

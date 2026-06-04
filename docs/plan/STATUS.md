@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 9 — Grafana + Amazon OpenSearch (ELK)
+Phase 9 — Saga Pattern + Outbox
 
 ## Summary
 Phase 8 complete. `payment-service` added as 5th microservice — gRPC-only (no ALB), Cloud Map registered at `payment-service.internal.local:9090`. Strategy pattern for 3 payment methods (CREDIT_CARD, PAYPAL, BANK_TRANSFER), all stubbed. `POST /orders` flow rewired to synchronous: save PENDING → gRPC ProcessPayment → SUCCESS: CONFIRMED + DecrementStock + SNS OrderConfirmed → 201; FAILURE → 402. SQS consumer removed from order-service (SqsMessagePoller, OrderEventListener, OrderCreatedEvent all deleted — SQS dep dropped). ECR repo `portfolio-dev-payment-service`. ecs-service module enhanced with `enable_alb_listener` flag (ALB resources wrapped in count). autoscaling.tf `alb_requests` policy gated on both `enable_autoscaling && enable_alb_listener`. `./mvnw verify` green: 15 IT tests across all 5 services (3 new PaymentGrpcServiceIT). `tofu validate` passes. Business metrics: payment.attempts/success/failure.total tagged by method.

@@ -192,6 +192,8 @@ resource "aws_ecs_task_definition" "this" {
 # ── ALB target group + listener rule ──────────────────────────────────────────
 
 resource "aws_lb_target_group" "this" {
+  count = var.enable_alb_listener ? 1 : 0
+
   name        = "${local.name_prefix}-${var.service_name}-tg"
   port        = var.container_port
   protocol    = "HTTP"
@@ -213,12 +215,14 @@ resource "aws_lb_target_group" "this" {
 }
 
 resource "aws_lb_listener_rule" "this" {
+  count = var.enable_alb_listener ? 1 : 0
+
   listener_arn = var.alb_listener_arn
   priority     = var.listener_rule_priority
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.this.arn
+    target_group_arn = aws_lb_target_group.this[0].arn
   }
 
   condition {
@@ -258,15 +262,18 @@ resource "aws_ecs_service" "this" {
     assign_public_ip = false
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.this.arn
-    container_name   = var.service_name
-    container_port   = var.container_port
+  dynamic "load_balancer" {
+    for_each = var.enable_alb_listener ? [1] : []
+    content {
+      target_group_arn = aws_lb_target_group.this[0].arn
+      container_name   = var.service_name
+      container_port   = var.container_port
+    }
   }
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
-  health_check_grace_period_seconds  = var.health_check_grace_period_seconds
+  health_check_grace_period_seconds  = var.enable_alb_listener ? var.health_check_grace_period_seconds : 0
 
   dynamic "service_registries" {
     for_each = var.enable_cloud_map ? [1] : []

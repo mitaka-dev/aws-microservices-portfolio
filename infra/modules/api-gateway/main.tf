@@ -2,48 +2,6 @@ locals {
   name_prefix = "${var.org}-${var.environment}"
 }
 
-# Inline Lambda — temporary /health backend until Phase 3 adds ALB + VPC Link
-data "archive_file" "health_lambda" {
-  type        = "zip"
-  output_path = "${path.module}/health_lambda.zip"
-
-  source {
-    content  = "def handler(e, c): return {\"statusCode\": 200, \"body\": '{\"status\":\"ok\"}', \"headers\": {\"Content-Type\": \"application/json\"}}"
-    filename = "handler.py"
-  }
-}
-
-data "aws_iam_policy_document" "lambda_assume" {
-  statement {
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-resource "aws_iam_role" "health_lambda" {
-  name               = "${local.name_prefix}-health-lambda"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "health_lambda_basic" {
-  role       = aws_iam_role.health_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_lambda_function" "health" {
-  function_name    = "${local.name_prefix}-health"
-  role             = aws_iam_role.health_lambda.arn
-  runtime          = "python3.12"
-  handler          = "handler.handler"
-  filename         = data.archive_file.health_lambda.output_path
-  source_code_hash = data.archive_file.health_lambda.output_base64sha256
-
-  tags = { Name = "${local.name_prefix}-health" }
-}
-
 resource "aws_apigatewayv2_api" "this" {
   name          = "${local.name_prefix}-api"
   protocol_type = "HTTP"
@@ -63,36 +21,18 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
   }
 }
 
-resource "aws_apigatewayv2_integration" "health" {
-  api_id             = aws_apigatewayv2_api.this.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.health.invoke_arn
-  integration_method = "POST"
-}
-
-resource "aws_apigatewayv2_route" "health" {
-  api_id             = aws_apigatewayv2_api.this.id
-  route_key          = "GET /health"
-  authorization_type = "JWT"
-  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
-  target             = "integrations/${aws_apigatewayv2_integration.health.id}"
-}
-
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.this.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = 500
+    throttling_burst_limit = 1000
+  }
 }
 
-resource "aws_lambda_permission" "apigw" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.health.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
-}
-
-# ── VPC Link → internal ALB (added in Phase 3) ────────────────────────────────
+# ── VPC Link → internal ALB ───────────────────────────────────────────────────
 
 resource "aws_security_group" "vpc_link" {
   name   = "${local.name_prefix}-vpc-link-sg"

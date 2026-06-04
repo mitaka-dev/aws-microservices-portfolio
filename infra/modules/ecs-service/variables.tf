@@ -57,14 +57,22 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+variable "enable_alb_listener" {
+  description = "Create ALB target group and listener rule (false for internal gRPC-only services)"
+  type        = bool
+  default     = true
+}
+
 variable "alb_listener_arn" {
-  description = "ALB HTTP listener ARN for target group attachment"
+  description = "ALB HTTP listener ARN for target group attachment (required when enable_alb_listener = true)"
   type        = string
+  default     = ""
 }
 
 variable "path_patterns" {
   description = "ALB listener rule path patterns (e.g. [\"/users\", \"/users/*\"])"
   type        = list(string)
+  default     = []
 }
 
 variable "listener_rule_priority" {

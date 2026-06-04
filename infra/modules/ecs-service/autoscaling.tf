@@ -30,7 +30,7 @@ resource "aws_appautoscaling_policy" "cpu" {
 }
 
 resource "aws_appautoscaling_policy" "alb_requests" {
-  count              = var.enable_autoscaling ? 1 : 0
+  count              = var.enable_autoscaling && var.enable_alb_listener ? 1 : 0
   name               = "${local.name_prefix}-${var.service_name}-alb-requests"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs[0].resource_id
@@ -40,7 +40,7 @@ resource "aws_appautoscaling_policy" "alb_requests" {
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ALBRequestCountPerTarget"
-      resource_label         = "${var.autoscaling_alb_arn_suffix}/${aws_lb_target_group.this.arn_suffix}"
+      resource_label         = "${var.autoscaling_alb_arn_suffix}/${aws_lb_target_group.this[0].arn_suffix}"
     }
     target_value       = var.autoscaling_request_count_target
     scale_in_cooldown  = 300

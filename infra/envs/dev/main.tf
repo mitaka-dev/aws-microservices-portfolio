@@ -16,6 +16,7 @@ module "ecr" {
     "catalog-service",
     "order-service",
     "file-service",
+    "payment-service",
   ]
 }
 
@@ -223,7 +224,6 @@ module "order_service" {
   listener_rule_priority            = 120
   aws_region                        = var.aws_region
   health_check_grace_period_seconds = 120
-  sqs_queue_arns                    = [module.sns_sqs_orders.queue_arn]
   sns_topic_arns                    = [module.sns_sqs_orders.topic_arn]
   enable_cloud_map                  = true
   cloud_map_namespace_id            = module.cloud_map.namespace_id
@@ -235,7 +235,6 @@ module "order_service" {
     DB_HOST                = module.rds_postgres.address
     DB_NAME                = module.rds_postgres.db_name
     SNS_ORDERS_TOPIC_ARN   = module.sns_sqs_orders.topic_arn
-    SQS_ORDERS_QUEUE_URL   = module.sns_sqs_orders.queue_url
   }
 
   task_secrets = {
@@ -324,6 +323,60 @@ resource "aws_vpc_security_group_ingress_rule" "file_from_alb" {
   ip_protocol                  = "tcp"
 }
 
+module "payment_service" {
+  source = "../../modules/ecs-service"
+
+  org                = var.org
+  environment        = var.environment
+  service_name       = "payment-service"
+  image_uri          = "${module.ecr.repository_urls["payment-service"]}:latest"
+  cluster_arn        = module.ecs_cluster.cluster_arn
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+  aws_region         = var.aws_region
+
+  # Internal gRPC-only service — no ALB listener rule
+  enable_alb_listener = false
+  container_port      = 9090
+
+  cloud_map_namespace_id = module.cloud_map.namespace_id
+  enable_cloud_map       = true
+
+  env_vars = {
+    SPRING_PROFILES_ACTIVE = "aws"
+    AWS_REGION             = var.aws_region
+    COGNITO_ISSUER_URI     = module.cognito.issuer_uri
+    DB_HOST                = module.rds_postgres.address
+    DB_NAME                = "paymentdb"
+  }
+
+  task_secrets = {
+    SPRING_DATASOURCE_USERNAME = "${module.rds_postgres.secret_arn}:username::"
+    SPRING_DATASOURCE_PASSWORD = "${module.rds_postgres.secret_arn}:password::"
+  }
+
+  secret_arns_for_exec_role = [module.rds_postgres.secret_arn]
+
+  enable_adot       = true
+  otel_service_name = "payment-service"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "payment_grpc_from_order" {
+  security_group_id            = module.payment_service.task_sg_id
+  referenced_security_group_id = module.order_service.task_sg_id
+  from_port                    = 9090
+  to_port                      = 9090
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_from_payment" {
+  security_group_id            = module.rds_postgres.sg_id
+  referenced_security_group_id = module.payment_service.task_sg_id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
 module "github_oidc" {
   source      = "../../modules/github-oidc"
   org         = var.org
@@ -369,4 +422,7 @@ module "observability" {
       target_group_arn_suffix = module.file_service.target_group_arn_suffix
     },
   ]
+  # payment-service is gRPC-only (no ALB target group) — its custom metrics
+  # (payment.attempts/success/failure) are published to Portfolio/payment-service
+  # namespace and visible in CloudWatch directly.
 }

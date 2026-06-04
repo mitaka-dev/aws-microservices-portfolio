@@ -6,6 +6,7 @@ Four production-grade microservices on AWS ECS Fargate: user management, product
 ![Java 25](https://img.shields.io/badge/Java-25-blue)
 ![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0.6-green)
 ![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-purple)
+![Pulumi Java](https://img.shields.io/badge/IaC-Pulumi%20Java-blueviolet)
 
 ## Architecture
 
@@ -13,44 +14,61 @@ Four production-grade microservices on AWS ECS Fargate: user management, product
 
 ## AWS Services Used
 
-**Compute:** ECS Fargate, Lambda (health mock)  
+**Compute:** ECS Fargate  
 **Networking:** VPC, API Gateway (HTTP API), Application Load Balancer, VPC Link, NAT Gateway, AWS Cloud Map  
 **Auth:** Cognito User Pool, JWT authorizer, IAM OIDC provider  
 **Storage:** RDS PostgreSQL, DynamoDB (on-demand), ElastiCache Redis, S3  
 **Messaging:** SNS, SQS (with DLQ)  
 **Observability:** X-Ray, CloudWatch Metrics, CloudWatch Logs, CloudWatch Dashboard, CloudWatch Alarms, ADOT (OpenTelemetry Collector), OTel Java agent  
 **CI/CD:** ECR, GitHub Actions  
-**IaC:** OpenTofu (Terraform-compatible), S3 remote state  
+**IaC:** OpenTofu (Terraform-compatible) + Pulumi Java SDK 0.11.0 (parallel implementation), S3 remote state  
 **Secrets:** AWS Secrets Manager  
 
-## Quickstart
+## Running the Infrastructure
 
-Prerequisites: AWS CLI, OpenTofu ≥ 1.8, Java 25, Docker.
+Prerequisites: AWS CLI configured for the `aws-microservices-portfolio` profile, OpenTofu ≥ 1.8, Java 25, Docker.
+
+**Bring up the full stack** (~5 min, ~180 resources):
 
 ```bash
-# 1. Bring up the full stack (~5 min)
-./scripts/up.sh
+./scripts/up.sh          # runs tofu plan, prompts for approval, then applies
+```
 
-# 2. Create a test user and get a JWT
-./scripts/get-token.sh
+Once up, get an API endpoint and a JWT to call the services:
 
-# 3. Call the API
+```bash
 BASE=$(tofu -chdir=infra/envs/dev output -raw api_gateway_endpoint)
 BASE="${BASE%/}"
-TOKEN="<paste token from step 2>"
+TOKEN=$(./scripts/get-token.sh | grep 'eyJ' | head -1)
 
 curl "$BASE/health"
 curl -H "Authorization: Bearer $TOKEN" "$BASE/catalog"
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"name":"Widget","description":"A test item","price":9.99,"stock":100}' \
-     "$BASE/catalog" | jq .
+```
 
-# 4. Run the full end-to-end test suite
+**Tear down** when done to avoid charges (~$4/day while running):
+
+```bash
+./scripts/down.sh        # runs tofu destroy
+```
+
+## Running Tests
+
+```bash
+# Unit + integration tests (Testcontainers spins up Postgres, Redis, LocalStack)
+./mvnw verify
+
+# Single-service build
+./mvnw -pl user-service -am verify
+
+# Local end-to-end (requires Docker Compose stack running)
+docker compose up -d
+./tests/e2e-local.sh
+
+# Full end-to-end against deployed AWS
 ./tests/e2e-aws.sh
 
-# 5. Tear down when done
-./scripts/down.sh
+# k6 load test against deployed AWS
+k6 run -e BASE_URL="$BASE" -e TOKEN="$TOKEN" tests/load/smoke.js
 ```
 
 ## Cost
@@ -61,22 +79,6 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 | **Torn down** | ~$0.02/day | S3 state bucket + ECR image storage |
 
 > Auto-scaling includes a scheduled scale-to-zero at 22:00 UTC and scale-up at 08:00 UTC to cut cost during inactivity.
-
-## Architectural Tradeoffs
-
-Honest assessment of what I'd change for a production system at real scale:
-
-| Area | Portfolio choice | Production alternative | Reason to change |
-|---|---|---|---|
-| **Database** | RDS `db.t4g.micro`, single-AZ | Aurora PostgreSQL, multi-AZ, Serverless v2 | Automatic failover, storage auto-scaling, ~1/10 the ops surface |
-| **Compute** | ECS Fargate | EKS + Karpenter | Better bin-packing, Spot support, richer ecosystem (Argo, KEDA) once you have >5 teams |
-| **Service mesh** | Cloud Map DNS | App Mesh / Istio | mTLS between services, traffic splitting for canary deploys, circuit breaking at the mesh layer |
-| **Edge security** | None | AWS WAF + Shield Standard | SQL injection protection, rate limiting, DDoS mitigation |
-| **Availability** | Single region | Active-active multi-region + DynamoDB global tables | Required for regulated industries or sub-100ms global latency targets |
-| **Repo structure** | Monorepo | One repo per service | Team autonomy, independent deploy cadences, smaller CI blast radius |
-| **Secrets rotation** | Secrets Manager, manual rotation | External Secrets Operator + HashiCorp Vault | Centralised rotation policies, audit trail, cloud-agnostic |
-
-**Monorepo justification:** The four services share a `proto-shared` gRPC module; a monorepo makes cross-service proto changes and atomic refactors trivial. This becomes a coordination bottleneck once multiple teams own the services — the coupling is a feature here, and a smell at scale.
 
 ## Project Structure
 
@@ -90,6 +92,7 @@ aws-microservices-portfolio/
 ├── infra/
 │   ├── envs/dev/          OpenTofu root module (~180 resources, Phases 1–7)
 │   └── modules/           Reusable modules: network, ecs-service, alb, rds, ...
+├── infra-pulumi/          Pulumi Java SDK parallel IaC — same ~180 resources, 15 ComponentResources
 ├── .github/workflows/
 │   ├── ci.yml             Test on PR · build+push+deploy on push to main (git-diff detection)
 │   ├── infra.yml          tofu plan on infra/** PRs · tofu apply on dispatch

@@ -1,10 +1,10 @@
 # Project Status
 
 ## Current Phase
-Phase 8 — Polish for the CV (next planned phase)
+Phase 9 — Grafana + Amazon OpenSearch (ELK)
 
 ## Summary
-Phase 7 complete. GitHub Actions CI/CD via OIDC — no long-lived AWS credentials. Three workflows: `ci.yml` (test on PR, build+push+deploy changed services on push to main with git-diff detection), `infra.yml` (tofu plan comment on infra/** PRs, tofu apply on manual dispatch), `load-test.yml` (k6 smoke on manual dispatch). IAM OIDC provider + `portfolio-dev-ci` role (AdministratorAccess, trust scoped to repo). Lessons: S3 backend profile must be removed for CI credential chain to work; `*.tfvars` gitignore was over-broad — narrowed to `*.secret.tfvars` and committed `terraform.tfvars`.
+Phase 8 complete. `payment-service` added as 5th microservice — gRPC-only (no ALB), Cloud Map registered at `payment-service.internal.local:9090`. Strategy pattern for 3 payment methods (CREDIT_CARD, PAYPAL, BANK_TRANSFER), all stubbed. `POST /orders` flow rewired to synchronous: save PENDING → gRPC ProcessPayment → SUCCESS: CONFIRMED + DecrementStock + SNS OrderConfirmed → 201; FAILURE → 402. SQS consumer removed from order-service (SqsMessagePoller, OrderEventListener, OrderCreatedEvent all deleted — SQS dep dropped). ECR repo `portfolio-dev-payment-service`. ecs-service module enhanced with `enable_alb_listener` flag (ALB resources wrapped in count). autoscaling.tf `alb_requests` policy gated on both `enable_autoscaling && enable_alb_listener`. `./mvnw verify` green: 15 IT tests across all 5 services (3 new PaymentGrpcServiceIT). `tofu validate` passes. Business metrics: payment.attempts/success/failure.total tagged by method.
 
 ## Completed Phases
 - Phase 0 — Local Foundation: Maven monorepo, `user-service`, Flyway, Testcontainers IT tests passing.
@@ -17,6 +17,7 @@ Phase 7 complete. GitHub Actions CI/CD via OIDC — no long-lived AWS credential
 - Phase 5 — Auto-scaling: Application Auto Scaling on all 4 services. Target tracking: ALBRequestCountPerTarget @ 50 req/min/task + CPU @ 70%. Scheduled: scale-to-zero 22:00 UTC, scale-up 08:00 UTC. `lifecycle { ignore_changes = [desired_count] }` on ECS services. k6 smoke/scale/order-flow scripts in `tests/load/`. 158 resources applied. k6 smoke test: 276 checks, 0 failures, p(95)=161ms (2026-05-31).
 - Phase 6 — Observability: ADOT sidecar + OTel Java agent 2.7.0 on all 4 ECS services → X-Ray distributed traces. Micrometer CloudWatch metrics export (namespace `Portfolio/<service>`, 60s step). Business counters: users.created.total, catalog.items.created.total, orders.created.total, files.presign_upload.total. CloudWatch Dashboard (10 widgets: ALB requests/latency, ECS CPU/memory, RDS connections/CPU, SQS visible/age, DynamoDB RCU/WCU). SNS alarm topic (dpttraykov@gmail.com) + 9 alarms (4× 5xx, 4× ECS running tasks, SQS age, DLQ depth, RDS CPU). 176 resources applied (2026-05-31).
 - Phase 7 — CI/CD: GitHub Actions via OIDC (no long-lived credentials). `ci.yml`: test on PR + build/push/deploy on push to main (git-diff service detection). `infra.yml`: tofu plan on infra/** PRs, apply on dispatch. `load-test.yml`: k6 smoke on dispatch. `infra/modules/github-oidc`: OIDC provider + `portfolio-dev-ci` role. `*.tfvars` gitignore narrowed to `*.secret.tfvars`; `terraform.tfvars` committed.
+- Phase 8 — Payment Service: 5th microservice `payment-service`, gRPC-only (port 9090, no ALB), Strategy pattern (CreditCard/PayPal/BankTransfer stubs), `payment_records` table via Flyway. order-service `POST /orders` now synchronous: payment gRPC → DecrementStock gRPC → SNS OrderConfirmed. SQS consumer removed from order-service. ECR repo `portfolio-dev-payment-service`. ecs-service module supports `enable_alb_listener = false`. Business metrics: payment.attempts/success/failure.total tagged by method. 15 IT tests green.
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.

@@ -1,9 +1,13 @@
 package com.portfolio.orderservice;
 
 import com.portfolio.orderservice.grpc.CatalogGrpcClient;
+import com.portfolio.orderservice.grpc.PaymentGrpcClient;
 import com.portfolio.orderservice.model.OrderStatus;
 import com.portfolio.orderservice.repository.OrderRepository;
 import com.portfolio.proto.catalog.DecrementStockResponse;
+import com.portfolio.proto.payment.PaymentMethod;
+import com.portfolio.proto.payment.PaymentResponse;
+import com.portfolio.proto.payment.PaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,22 +29,19 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 import static org.testcontainers.containers.localstack.LocalStackContainer.Service.SNS;
-import static org.testcontainers.containers.localstack.LocalStackContainer.Service.SQS;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
 @AutoConfigureTestRestTemplate
@@ -55,10 +56,9 @@ class OrderControllerIT {
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
         DockerImageName.parse("localstack/localstack:3"))
-        .withServices(SNS, SQS);
+        .withServices(SNS);
 
     static String topicArn;
-    static String queueUrl;
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
@@ -71,44 +71,27 @@ class OrderControllerIT {
         r.add("spring.cloud.aws.region.static", localstack::getRegion);
         r.add("spring.cloud.aws.endpoint", () -> localstack.getEndpoint().toString());
 
-        createMessagingResources();
+        createSnsResources();
         r.add("aws.sns.orders-topic-arn", () -> topicArn);
-        r.add("aws.sqs.orders-processing-queue-url", () -> queueUrl);
     }
 
-    private static void createMessagingResources() {
+    private static void createSnsResources() {
         var endpoint = localstack.getEndpoint();
         var region = Region.of(localstack.getRegion());
         var creds = StaticCredentialsProvider.create(
             AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey()));
 
-        try (var sqsClient = SqsClient.builder().endpointOverride(endpoint).region(region).credentialsProvider(creds).build();
-             var snsClient = SnsClient.builder().endpointOverride(endpoint).region(region).credentialsProvider(creds).build()) {
-
-            var dlqUrl = sqsClient.createQueue(r -> r.queueName("orders-dlq")).queueUrl();
-            var dlqArn = sqsClient.getQueueAttributes(r -> r.queueUrl(dlqUrl)
-                .attributeNames(QueueAttributeName.QUEUE_ARN)).attributes().get(QueueAttributeName.QUEUE_ARN);
-
-            queueUrl = sqsClient.createQueue(r -> r
-                .queueName("orders-processing")
-                .attributes(Map.of(QueueAttributeName.REDRIVE_POLICY,
-                    "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":\"3\"}"))
-            ).queueUrl();
-            var queueArn = sqsClient.getQueueAttributes(r -> r.queueUrl(queueUrl)
-                .attributeNames(QueueAttributeName.QUEUE_ARN)).attributes().get(QueueAttributeName.QUEUE_ARN);
-
+        try (var snsClient = SnsClient.builder()
+                .endpointOverride(endpoint).region(region).credentialsProvider(creds).build()) {
             topicArn = snsClient.createTopic(r -> r.name("orders-events")).topicArn();
-            snsClient.subscribe(r -> r
-                .topicArn(topicArn)
-                .protocol("sqs")
-                .endpoint(queueArn)
-                .attributes(Map.of("RawMessageDelivery", "true"))
-            );
         }
     }
 
     @MockitoBean
     CatalogGrpcClient catalogGrpcClient;
+
+    @MockitoBean
+    PaymentGrpcClient paymentGrpcClient;
 
     @Autowired
     TestRestTemplate restTemplate;
@@ -120,26 +103,27 @@ class OrderControllerIT {
     void setUpMocks() {
         given(catalogGrpcClient.decrementStock(anyString(), anyInt()))
             .willReturn(DecrementStockResponse.newBuilder().setSuccess(true).setRemainingStock(9).build());
+
+        given(paymentGrpcClient.processPayment(anyString(), anyDouble(), anyString(), any(PaymentMethod.class)))
+            .willReturn(PaymentResponse.newBuilder()
+                .setPaymentId(UUID.randomUUID().toString())
+                .setStatus(PaymentStatus.SUCCESS)
+                .build());
     }
 
     @Test
-    void createOrderAndWaitForConfirmation() {
+    void createOrder_succeeds_and_is_confirmed() {
         var body = Map.of(
             "userId", "user-123",
             "items", List.of(Map.of("productId", "prod-1", "quantity", 2, "unitPrice", 19.99))
         );
         ResponseEntity<Map> created = restTemplate.postForEntity("/orders", body, Map.class);
-        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String id = (String) created.getBody().get("id");
         assertThat(id).isNotNull();
 
-        UUID orderId = UUID.fromString(id);
-        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() ->
-            assertThat(orderRepository.findById(orderId))
-                .isPresent()
-                .hasValueSatisfying(o -> assertThat(o.getStatus()).isEqualTo(OrderStatus.CONFIRMED))
-        );
+        assertThat(created.getBody().get("status")).isEqualTo("CONFIRMED");
 
         ResponseEntity<Map> fetched = restTemplate.getForEntity("/orders/" + id, Map.class);
         assertThat(fetched.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -147,10 +131,28 @@ class OrderControllerIT {
     }
 
     @Test
-    void listOrders() {
+    void createOrder_paymentFailure_returns402() {
+        given(paymentGrpcClient.processPayment(anyString(), anyDouble(), anyString(), any(PaymentMethod.class)))
+            .willReturn(PaymentResponse.newBuilder()
+                .setPaymentId(UUID.randomUUID().toString())
+                .setStatus(PaymentStatus.FAILED)
+                .setFailureReason("Insufficient funds")
+                .build());
+
         var body = Map.of(
             "userId", "user-456",
             "items", List.of(Map.of("productId", "prod-2", "quantity", 1, "unitPrice", 9.99))
+        );
+        ResponseEntity<Map> response = restTemplate.postForEntity("/orders", body, Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+    }
+
+    @Test
+    void listOrders() {
+        var body = Map.of(
+            "userId", "user-789",
+            "items", List.of(Map.of("productId", "prod-3", "quantity", 1, "unitPrice", 9.99))
         );
         restTemplate.postForEntity("/orders", body, Map.class);
 

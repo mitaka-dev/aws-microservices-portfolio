@@ -10,6 +10,7 @@ COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
 COPY file-service/pom.xml file-service/
+COPY payment-service/pom.xml payment-service/
 
 # 1) Install root POM so child POMs can resolve their parent from local repo
 # 2) Pre-resolve file-service external dependencies (cached until pom changes)

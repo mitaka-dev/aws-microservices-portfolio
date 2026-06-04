@@ -38,6 +38,15 @@ The VPC is divided into four subnets across two availability zones:
 ### NAT Gateway + Elastic IP
 Allows ECS tasks in private subnets to reach the internet for outbound calls — pulling container images from ECR, sending metrics to CloudWatch, calling AWS APIs. Inbound connections from the internet cannot reach private subnets through the NAT. One NAT Gateway in one public subnet (cost vs. simplicity trade-off; a production system would have one per AZ for HA).
 
+**Why both API Gateway and NAT Gateway?** They handle traffic in opposite directions and have nothing to do with each other:
+
+```
+Internet → API Gateway → VPC Link → ALB → ECS tasks   (inbound requests)
+ECS tasks → NAT Gateway → Internet Gateway → AWS APIs  (outbound calls)
+```
+
+API Gateway is the entry point for client traffic coming in. NAT Gateway is the exit for AWS SDK calls going out. Remove API Gateway and there is no way to call the services. Remove NAT Gateway and ECS tasks cannot reach ECR or CloudWatch and will fail to start.
+
 **Connected to:** private subnet route tables, internet gateway.
 
 ### Internet Gateway
@@ -81,11 +90,6 @@ Runs the four Spring Boot services as containers, without managing EC2 instances
 Automatically adjusts the running task count for each ECS service based on load and a schedule. Two policies per service: CPU target tracking (scales out when CPU > 70%) and ALB request count target tracking (scales out when requests/task > 50/min). Two scheduled actions per service: scale to zero at 22:00 UTC (cost saving), scale back up at 08:00 UTC.
 
 **Connected to:** ECS services (adjusts `desired_count`), CloudWatch metrics (scaling signals).
-
-### Lambda
-One Lambda function backs the `/health` route on API Gateway. It returns a static JSON response to prove API Gateway routing works without requiring any ECS service to be running. Not part of the main business logic.
-
-**Connected to:** API Gateway (as an integration target).
 
 ---
 
@@ -193,13 +197,13 @@ Internet
         └── API Gateway (JWT auth via Cognito)
               └── VPC Link
                     └── ALB (path-based routing)
-                          ├── user-service (ECS Fargate)  ──► RDS PostgreSQL
-                          ├── catalog-service (ECS Fargate) ─► DynamoDB + Redis
-                          ├── order-service (ECS Fargate)  ──► RDS PostgreSQL
+                          ├── user-service (ECS Fargate)    ──► RDS PostgreSQL
+                          ├── catalog-service (ECS Fargate) ──► DynamoDB + Redis
+                          ├── order-service (ECS Fargate)   ──► RDS PostgreSQL
                           │     ├── publishes ──► SNS ──► SQS ──► (self-consumes)
-                          │     └── gRPC ────────────────────────► catalog-service
-                          │                                         (via Cloud Map DNS)
-                          └── file-service (ECS Fargate)   ──► S3 (presigned URLs)
+                          │     └── gRPC ─────────────────────────► catalog-service
+                          │                                          (via Cloud Map DNS)
+                          └── file-service (ECS Fargate)    ──► S3 (presigned URLs)
 
 All ECS tasks:
   ├── pull images from ECR
@@ -212,4 +216,188 @@ CI (GitHub Actions):
   ├── authenticates via OIDC ──► IAM role
   ├── builds + pushes images ──► ECR
   └── deploys ──► ECS
+```
+
+---
+
+## System Architecture
+
+### 1. Inbound Traffic Flow
+
+```
+  Client / Browser
+        │
+        ▼
+  ┌───────────┐
+  │    WAF    │  blocks OWASP Top 10, known bad inputs
+  └─────┬─────┘
+        │
+        ▼
+  ┌─────────────────────────────────┐
+  │         API Gateway             │◄── Cognito (validates JWT on every request)
+  │         (HTTP API)              │
+  │  throttle: 500 RPS / 1000 burst │
+  └─────────────┬───────────────────┘
+                │ VPC Link (private tunnel into VPC)
+                │
+┌───────────────▼───────────────────────────────────────────────────────────────┐
+│ VPC  10.0.0.0/16                                                              │
+│                                                                               │
+│  ┌─── Public Subnets (eu-west-1a / 1b) ─────────────────────────────────┐     │
+│  │                                                                      │     │
+│  │   ┌────────────────────────────────────────────────────────────────┐ │     │
+│  │   │                  ALB  (internal, path-based routing)           │ │     │
+│  │   │   /users/*   /catalog/*   /orders/*   /files/*                 │ │     │
+│  │   └──────┬──────────────┬──────────────┬─────────────┬─────────────┘ │     │
+│  │          │              │              │             │               │     │
+│  │   Internet GW      NAT Gateway                                       │     │ 
+│  └──────────────────────────────────────────────────────────────────────┘     │
+│                 │              │              │             │                 │
+│  ┌─── Private Subnets ─────────────────────────────────────────────────────┐  │
+│  │              │              │              │             │              │  │
+│  │   ┌──────────▼──┐  ┌────────▼────┐  ┌────▼────────┐  ┌▼────────────┐    │  │
+│  │   │ user-service│  │catalog-svc  │  │order-service│  │ file-service│    │  │
+│  │   │  :8080      │  │  :8080      │  │  :8080      │  │  :8080      │    │  │
+│  │   │  [Fargate]  │  │  [Fargate]  │  │  [Fargate]  │  │  [Fargate]  │    │  │
+│  │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘    │  │
+│  │          │                │                 │                │          │  │
+│  │          ▼                ├──► DynamoDB     ▼               ▼           │  │
+│  │         RDS               └──► Redis       RDS              S3          │  │
+│  │       (Postgres)                         (Postgres)    (presigned URL   │  │
+│  │      user-service                       order-service   back to client) │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 2. Event-Driven & Internal Service Communication
+
+```
+  order-service
+       │
+       │  1. POST /orders received
+       │  2. Save order to RDS (status: PENDING)
+       │  3. Publish event
+       ▼
+  ┌─────────┐
+  │   SNS   │  topic: orders-events
+  └────┬────┘
+       │ fan-out
+       ▼
+  ┌─────────┐
+  │   SQS   │  queue: orders-processing
+  └────┬────┘         (DLQ: orders-processing-dlq)
+       │ polled by SqsMessagePoller (same order-service)
+       ▼
+  order-service
+       │
+       │  4. gRPC DecrementStock call
+       │     (resolves catalog-service.internal.local via Cloud Map DNS)
+       ▼
+  ┌──────────────────┐
+  │  catalog-service │  :9090 (gRPC server)
+  │  [Cloud Map DNS] │
+  └──────────────────┘
+       │
+       │  5. Decrement stock in DynamoDB
+       │  6. Return OK / INSUFFICIENT_STOCK
+       ▼
+  order-service
+       │
+       │  7. Update order status → CONFIRMED or FAILED
+       ▼
+      RDS
+```
+
+---
+
+### 3. Observability
+
+```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Every ECS task runs two containers:                            │
+  │                                                                 │
+  │   ┌──────────────────────────┐   ┌─────────────────────────┐    │
+  │   │   Spring Boot app        │   │   ADOT sidecar          │    │
+  │   │   + OTel Java agent      │──►│   (OpenTelemetry        │    │
+  │   │                          │   │    Collector)           │    │
+  │   └──────────────────────────┘   └──────────┬──────────────┘    │
+  └──────────────────────────────────────────────┼──────────────────┘
+                                                 │
+                    ┌────────────────────────────┼────────────────────────┐
+                    │                            │                        │
+                    ▼                            ▼                        ▼
+           CloudWatch Logs               AWS X-Ray                CloudWatch Metrics
+           (stdout / stderr)          (distributed traces,        (custom: users.created,
+           one log group              service map across          orders.created, etc.
+           per service                all 4 services)             + ALB / ECS / RDS /
+                                                                  SQS / DynamoDB metrics)
+                                                                         │
+                                                                         ▼
+                                                                 CloudWatch Dashboard
+                                                                 (10 widgets, full view)
+                                                                         │
+                                                                         ▼
+                                                                 CloudWatch Alarms (9)
+                                                                         │
+                                                                         ▼
+                                                                  SNS alarm topic
+                                                                         │
+                                                                         ▼
+                                                                   Email alert
+```
+
+---
+
+### 4. CI/CD Pipeline
+
+```
+  Developer
+      │
+      │  git push → main
+      ▼
+  GitHub Actions (ci.yml)
+      │
+      │  1. Authenticate (no stored AWS credentials)
+      ▼
+  ┌─────────────────────┐
+  │  GitHub OIDC token  │──► AWS STS ──► IAM role (portfolio-dev-ci)
+  └─────────────────────┘               short-lived credentials
+                                               │
+                          ┌────────────────────┼────────────────────┐
+                          │                    │                    │
+                          ▼                    ▼                    ▼
+                   ./mvnw verify          docker build         ecs update-service
+                   (unit + IT tests)      + push image    (rolling deploy, or
+                                          ──► ECR         CodeDeploy blue/green)
+                                         (only changed
+                                          services via
+                                          git-diff detection)
+```
+
+---
+
+### 5. Security Boundaries
+
+```
+  ┌─── What can reach what ──────────────────────────────────────────────────┐
+  │                                                                          │
+  │  Internet          → WAF → API Gateway only (no direct VPC access)       │
+  │  API Gateway       → ALB only (via VPC Link, private)                    │
+  │  ALB               → ECS tasks only (security group rule)                │
+  │  ECS tasks         → their own data store + Secrets Manager + AWS APIs   │
+  │                       (outbound via NAT Gateway)                         │
+  │  ECS user-service  → RDS only                                            │
+  │  ECS catalog-svc   → DynamoDB + Redis only                               │
+  │  ECS order-service → RDS + SNS + SQS + catalog-service (gRPC)            │
+  │  ECS file-service  → S3 only                                             │
+  │  RDS               → ECS tasks only (port 5432, no public access)        │
+  │  Redis             → ECS catalog-service only (port 6379)                │
+  │  S3                → ECS file-service (presign) + clients (direct PUT/   │
+  │                       GET via presigned URL, time-limited)               │
+  │                                                                          │
+  │  IAM task roles are scoped per service — no service can access           │
+  │  another service's data store.                                           │
+  └──────────────────────────────────────────────────────────────────────────┘
 ```

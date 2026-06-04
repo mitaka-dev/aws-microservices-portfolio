@@ -10,9 +10,8 @@
 Build a small but realistic distributed system on AWS that demonstrates: load balancing, SQL + NoSQL persistence, caching, async messaging, gRPC, JWT auth, auto-scaling, file uploads, observability, and Infrastructure as Code.
 
 ### Why a Monorepo
-This project keeps **all services, shared code, infrastructure, tests, and docs in a single repository**. For a portfolio project this is unambiguously the right call:
+This project keeps **all services, shared code, infrastructure, tests, and docs in a single repository**.
 
-- **One link on the CV.** Recruiters click once and see everything.
 - **Atomic cross-service changes.** Update a shared `.proto` and all consumers in one PR.
 - **One CI pipeline, one set of tooling, one architecture diagram.**
 - **Less ceremony than 4–6 repos for a 4-service project.**
@@ -49,15 +48,6 @@ This project keeps **all services, shared code, infrastructure, tests, and docs 
                                     └──────────────┘
 ```
 
-### Communication Patterns (mental model)
-
-| Need | Tool |
-|---|---|
-| "I need this data fast, I'll wait for it" | **Redis** (cache-aside) |
-| "I need to call another service and get an answer now" | **gRPC** (sync RPC, internal only) |
-| "I need to tell other services something happened, but I don't want to wait" | **SNS → SQS** (async events) |
-| "I need to permanently store this" | **RDS / DynamoDB / S3** |
-
 ### Tech Stack
 
 | Layer | Choice |
@@ -81,8 +71,8 @@ This project keeps **all services, shared code, infrastructure, tests, and docs 
 | Files | S3 (presigned URLs) |
 | Secrets | AWS Secrets Manager + SSM Parameter Store |
 | Registry | ECR |
-| Logs | CloudWatch Logs |
-| Metrics | CloudWatch Metrics via Micrometer |
+| Logs | CloudWatch Logs + Amazon OpenSearch Service (ELK) |
+| Metrics | CloudWatch Metrics via Micrometer + Grafana dashboards |
 | Traces | AWS X-Ray via ADOT (OpenTelemetry) |
 | Unit/IT tests | JUnit 5 + Testcontainers + WireMock |
 | Load tests | **k6** |
@@ -112,6 +102,7 @@ aws-microservices-portfolio/
 │   ├── pom.xml
 │   └── src/main/proto/
 │       ├── catalog.proto
+│       ├── payment.proto
 │       └── user.proto
 │
 ├── user-service/                    # Maven module
@@ -139,6 +130,11 @@ aws-microservices-portfolio/
 │   ├── Dockerfile
 │   └── src/...
 │
+├── payment-service/                 # Maven module — gRPC server, Strategy-pattern payment methods
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── src/...
+│
 ├── infra/                           # OpenTofu — all AWS infrastructure
 │   ├── envs/
 │   │   └── dev/
@@ -162,6 +158,7 @@ aws-microservices-portfolio/
 │       ├── s3-bucket/
 │       ├── secrets/
 │       ├── observability/           # log groups, dashboards, alarms
+│       ├── opensearch/              # Amazon OpenSearch Service domain (ELK)
 │       └── github-oidc/             # CI/CD trust policy
 │
 ├── tests/
@@ -186,7 +183,7 @@ aws-microservices-portfolio/
 ### Parent `pom.xml` Conventions
 
 - **Java 25** via `<maven.compiler.release>25</maven.compiler.release>`.
-- **Spring Boot 4** managed via the BOM in `<dependencyManagement>` (not as a parent — keeps the parent POM ours).
+- **Spring Boot 4** managed via the BOM in `<dependencyManagement>`.
 - **AWS SDK v2 BOM** in `<dependencyManagement>` so all child modules share versions.
 - **Spring Cloud AWS BOM** for `@SqsListener`, Secrets Manager integration, etc.
 - **Grpc-Java + protobuf-maven-plugin** declared in `proto-shared` module.
@@ -196,18 +193,19 @@ aws-microservices-portfolio/
 ### Module Dependencies
 
 ```
-proto-shared  ──►  (no deps)
-user-service  ──►  proto-shared
-catalog-service ──►  proto-shared
-order-service ──►  proto-shared
-file-service  ──►  proto-shared
+proto-shared     ──►  (no deps)
+user-service     ──►  proto-shared
+catalog-service  ──►  proto-shared
+order-service    ──►  proto-shared
+file-service     ──►  proto-shared
+payment-service  ──►  proto-shared
 ```
 
 `proto-shared` builds once at the start of every Maven reactor run; all services depend on its generated stubs.
 
 ---
 
-## 3. Build Plan — 9 Phases
+## 3. Build Plan — 12 Phases
 
 > Each phase is a self-contained Claude Code task. Complete and verify each before moving on. Commit after every phase.
 
@@ -427,8 +425,173 @@ file-service  ──►  proto-shared
 
 ---
 
-### Phase 8 — Polish for the CV
-- [ ] **Complete**
+### Phase 8 — Payment Service
+- [x] **Complete**
+
+**Goal:** Add `payment-service` as a fifth microservice — synchronously callable via gRPC from `order-service`. Demonstrates multi-service gRPC orchestration, the Strategy pattern for payment methods, and transactional flow design (sync payment call → async SNS notifications downstream).
+
+**Architecture note:** Payment is synchronous in the request path — customers need immediate success/failure feedback. The flow: `POST /orders` → sync gRPC to payment-service → on success: CONFIRMED + DecrementStock gRPC (catalog) + SNS publish; on failure: FAILED + return 402.
+
+**Tasks:**
+
+1. **`payment.proto`** — add to `proto-shared/src/main/proto/`:
+   - `ProcessPayment(PaymentRequest) returns (PaymentResponse)`
+   - Enums: `PaymentMethod` (CREDIT_CARD, PAYPAL, BANK_TRANSFER), `PaymentStatus` (SUCCESS, FAILED)
+   - Rebuild stubs: `./mvnw -pl proto-shared clean install`
+
+2. **`payment-service` Maven module:**
+   - Add to parent `pom.xml` and update all sibling Dockerfiles (new `COPY` for pom.xml — layer caching rule from `CLAUDE.md`).
+   - Dependencies: `spring-boot-starter-web`, `actuator`, `data-jpa`, `validation`, `flyway-core`, `flyway-database-postgresql`, `spring-cloud-aws-starter-secrets-manager`, gRPC server libs, `proto-shared`.
+   - Apply all SB4 workarounds from `CLAUDE.md`.
+
+3. **Domain:**
+   - `PaymentStrategy` interface: `PaymentResult process(PaymentRequest)`.
+   - `CreditCardPaymentStrategy`, `PayPalPaymentStrategy`, `BankTransferPaymentStrategy` — all stubbed (no real payment gateway — portfolio context).
+   - `PaymentGrpcService extends PaymentServiceGrpc.PaymentServiceImplBase` — dispatches via `Map<PaymentMethod, PaymentStrategy>` bean.
+   - `PaymentRecord` JPA entity.
+
+4. **Flyway:** `V1__create_payment_records.sql` — `payment_records(id, order_id, amount, currency, method, status, failure_reason, created_at)`.
+
+5. **`application.yml`** — local + aws profiles, gRPC server port 9090, HTTP 8080. Apply SB4 workarounds 1, 5, 11.
+
+6. **Dockerfile** — multi-stage, OTel Java agent (same pattern as other services, see `CLAUDE.md` workaround 12).
+
+7. **Update `order-service`:**
+   - Add `payment-service` gRPC client channel via Cloud Map DNS (`payment-service.internal.local:9090`).
+   - Revise `POST /orders` flow:
+     1. Save order → `PENDING`.
+     2. gRPC `ProcessPayment`.
+     3. SUCCESS: update → `CONFIRMED`, gRPC `DecrementStock`, publish `OrderConfirmed` to SNS, return 201.
+     4. FAILURE: update → `FAILED`, return 402.
+
+8. **Infrastructure (OpenTofu):**
+   - ECR repo: `portfolio-dev-payment-service`.
+   - ECS service on Fargate — **no ALB listener rule** (internal gRPC only, no public HTTP path).
+   - Cloud Map service registration: `payment-service.internal.local`.
+   - IAM task role: Secrets Manager read for RDS credentials.
+   - CloudWatch log group: `/ecs/portfolio-dev-payment-service`.
+
+9. **Business metrics:** `payment.attempts.total`, `payment.success.total`, `payment.failure.total` — tagged by `method` (credit_card / paypal / bank_transfer).
+
+10. **CI/CD:** add `payment-service` to git-diff change detection in `ci.yml`.
+
+11. **k6 `order-flow.js`:** update happy path to assert 201 on success; add a variant asserting 402 on forced payment failure.
+
+**Exit criteria:** `POST /orders` synchronously calls payment-service via gRPC. Success → order CONFIRMED, stock decremented, SNS event published. Failure → HTTP 402. Payment records in RDS. `./mvnw verify` green with IT tests for payment-service.
+
+---
+
+### Phase 9 — Grafana + Amazon OpenSearch (ELK)
+- [ ] **Not started**
+
+**Goal:** Supplement CloudWatch and X-Ray with two industry-standard tools: **Grafana** for rich shareable dashboards and **Amazon OpenSearch Service** for centralized log search and analytics (ELK pattern). Both are high-visibility CV keywords and demonstrate the ability to wire external observability tooling into an AWS-managed platform.
+
+**Tasks:**
+
+**Track A — Grafana**
+
+1. **Deploy Grafana:**
+   - **Recommended:** Grafana Cloud free tier (SaaS — zero AWS infra cost, ~10k series free). Create a workspace at grafana.com.
+   - **Alternative (more infra complexity, more CV value):** self-hosted on ECS Fargate with EFS for dashboard persistence — demonstrates stateful container deployment on Fargate.
+
+2. **Data sources:**
+   - CloudWatch: attach `CloudWatchReadOnlyAccess` IAM policy to Grafana Cloud's AWS integration.
+   - X-Ray: add as a data source to visualize distributed traces alongside metrics.
+
+3. **Dashboard — "Portfolio Overview":**
+   - ALB requests/min + p50/p99 latency per service.
+   - ECS CPU + memory per service.
+   - RDS connections + CPU.
+   - SQS visible messages + oldest message age.
+   - DynamoDB consumed RCU/WCU.
+   - Payment success/failure rate (from Phase 8 CloudWatch custom metrics).
+
+4. **Export dashboard JSON** → `docs/grafana/portfolio-dashboard.json` (enables one-click re-import after `tofu destroy`).
+
+5. Screenshot → `docs/diagrams/grafana-dashboard.png`.
+
+**Track B — Amazon OpenSearch (ELK)**
+
+1. **`infra/modules/opensearch`** (OpenTofu):
+   - Amazon OpenSearch Service domain, engine `OpenSearch_2.x`.
+   - Instance type: `t3.small.search`, single-node (cost-optimized portfolio).
+   - 10 GB EBS gp3 storage.
+   - VPC access mode, in private subnets.
+   - Fine-grained access control enabled; master user credentials in Secrets Manager.
+   - Security group: allow HTTPS (443) from ECS task security groups.
+   - **Cost note:** ≈$25–30/month while running — include in `tofu destroy` and `down.sh`.
+
+2. **Fluent Bit sidecar** on each ECS task definition (all 5 services):
+   - Image: `public.ecr.aws/aws-observability/aws-for-fluent-bit:stable` (pin by digest).
+   - Config: parse structured JSON app logs, enrich with `service_name` + `environment` fields, ship to OpenSearch via the `opensearch` output plugin.
+   - Keep existing CloudWatch awslogs driver in parallel.
+
+3. **OpenSearch Dashboards:**
+   - Index pattern: `portfolio-logs-*` (daily indices).
+   - Saved search: filterable by `service_name`, `log.level`, `trace_id`.
+   - Dashboard: log volume per service (bar chart), error count, full-text search panel.
+
+4. Screenshot → `docs/diagrams/opensearch-dashboard.png`.
+
+**Exit criteria:** Grafana dashboard shows live CloudWatch metrics for all 5 services. OpenSearch Dashboards shows structured logs from all 5 services, searchable by service, log level, and trace ID.
+
+---
+
+### Phase 10 — Code Review & Performance Hardening
+- [ ] **Not started**
+
+**Goal:** Audit all five services for correctness and performance issues, then apply a focused set of improvements that demonstrate senior-level thinking: right-sized connection pools, resilience patterns, reliable event publishing, Java 25 virtual threads, proper indexing, and pagination.
+
+**Tasks:**
+
+1. **HikariCP tuning (all services with RDS):**
+   - Set `maximum-pool-size` per service based on Fargate CPU allocation. Rule of thumb for 256 CPU / 512 MB: 5 connections max. For 512 CPU: 10 max.
+   - Set `minimum-idle = 2`, `connection-timeout = 3000ms`, `max-lifetime = 1800000ms` (30 min, below RDS idle timeout), `keepalive-time = 60000ms`.
+   - Add `connectionTestQuery: SELECT 1` (or rely on `validation-timeout`).
+   - Document pool size rationale in a code comment referencing Fargate vCPU constraint.
+   - Add HikariCP metrics to CloudWatch dashboard (active/idle/pending connection counts via Micrometer).
+
+2. **Resilience4j — circuit breakers, retries, timeouts:**
+   - Add `spring-cloud-starter-circuitbreaker-resilience4j` to `order-service` and any other service making outbound gRPC calls.
+   - Wrap each gRPC client call in `@CircuitBreaker(name = "catalog-grpc", fallbackMethod = ...)` + `@Retry(name = "catalog-grpc")` with exponential backoff (`waitDuration = 200ms`, `multiplier = 2`, `maxAttempts = 3`).
+   - Add `@TimeLimiter(name = "catalog-grpc")` with `timeoutDuration = 2s` so a slow downstream can't hold a thread indefinitely.
+   - Follow the `resilience4j-patterns` skill conventions for `application.yml` config.
+   - Verify circuit breaker trips under load with a k6 test that targets a deliberately slow path.
+
+3. **Outbox pattern for reliable SNS publishing:**
+   - Add `outbox_events(id, aggregate_type, aggregate_id, event_type, payload, created_at, published_at)` table via Flyway migration in `order-service` (and `payment-service` if it publishes events).
+   - In `@Transactional` order/payment flows: write to `outbox_events` in the same DB transaction instead of calling SNS directly.
+   - Add a `SmartLifecycle` poller (same pattern as `SqsMessagePoller`) that reads unpublished outbox rows, publishes to SNS, and marks `published_at`. Run every 5 seconds.
+   - Guarantees at-least-once delivery; downstream SQS consumers must be idempotent (they already should be).
+   - Follow the `outbox-pattern` skill for implementation details.
+
+4. **Virtual threads (Java 25):**
+   - Add `spring.threads.virtual.enabled: true` to `application.yml` in all services.
+   - This replaces Tomcat's and gRPC's platform thread pools with Project Loom virtual threads — significant throughput improvement for I/O-bound workloads at zero code change cost.
+   - Verify with a short k6 ramp: throughput should increase, p99 latency decrease under the same Fargate CPU allocation.
+   - Add a note to the README tradeoffs section: "Virtual threads (Project Loom) enabled — replaces thread-per-request overhead with lightweight continuations."
+
+5. **Database indexes — Flyway migrations:**
+   - Enable Hibernate slow query logging in dev (`logging.level.org.hibernate.SQL: DEBUG`, `spring.jpa.show-sql: true`) to surface missing indexes.
+   - Add indexes where missing:
+     - `user-service`: `users(email)` (unique — likely already there, confirm).
+     - `order-service`: `orders(user_id)`, `orders(status)`, `orders(user_id, status)` composite.
+     - `payment-service`: `payment_records(order_id)`, `payment_records(status)`.
+   - Each index via a dedicated Flyway migration (`V2__add_indexes.sql`).
+   - Disable slow query logging in the `aws` profile after review.
+
+6. **Pagination on list endpoints:**
+   - Add `Pageable` support to all `GET` list endpoints: `GET /users`, `GET /orders`, `GET /catalog` (DynamoDB — use `ExclusiveStartKey` for cursor pagination, not offset).
+   - HTTP response shape: `{ "items": [...], "page": 0, "size": 20, "totalElements": 142 }` (SQL) or `{ "items": [...], "nextCursor": "..." }` (DynamoDB).
+   - DynamoDB cursor pagination is the more interesting case — encode the `LastEvaluatedKey` as a base64 cursor in the response.
+   - Update k6 scripts to assert paginated responses.
+
+**Exit criteria:** `./mvnw verify` green across all services. HikariCP pool metrics visible in CloudWatch. Circuit breaker trips and recovers under test. Outbox poller publishes events after simulated SNS failure-then-recovery. k6 throughput measurably improved with virtual threads enabled vs disabled (document the delta). All list endpoints return paginated responses.
+
+---
+
+### Phase 11 — Polish for the CV
+- [ ] **Not started**
 
 **Goal:** the repo *is* the artifact. Make it readable in 3 minutes.
 
@@ -488,27 +651,27 @@ file-service  ──►  proto-shared
 - [ ] `./scripts/up.sh` provisions everything from zero.
 - [ ] `./scripts/down.sh` removes everything (verify zero unexpected charges next day).
 - [ ] `./mvnw verify` is green from repo root.
-- [ ] End-to-end k6 flow passes: sign up → log in → create catalog item → place order → upload file.
+- [ ] End-to-end k6 flow passes: sign up → log in → create catalog item → place order (with payment) → upload file.
 - [ ] Auto-scaling triggers under k6 load and you have a screenshot.
-- [ ] CloudWatch dashboard shows live metrics from all 4 services.
+- [ ] CloudWatch dashboard shows live metrics from all 5 services.
+- [ ] Grafana dashboard live with CloudWatch data; dashboard JSON exported to `docs/grafana/`.
+- [ ] OpenSearch Dashboards shows structured logs from all 5 services, searchable by service/level/trace.
 - [ ] X-Ray service map shows traces spanning all services + Dynamo + Redis.
 - [ ] CI pipeline deploys on merge to main with no manual steps.
 - [ ] README has architecture diagram, AWS-services bullet list, tradeoffs section.
 - [ ] At least 5 ADRs written.
-- [ ] Repo pinned on GitHub profile, linked from CV.
 
 ---
 
 ## 6. Stretch Goals (only after Definition of Done)
 
-In order of CV value:
 1. **WAF in front of API Gateway** — one rate-limit rule, trivial to add, recognizable.
 2. **Canary deploys** via CodeDeploy + ECS — progressive rollout.
 3. **Multi-AZ RDS** — flip a flag, mention in README.
 4. **DynamoDB Streams → Lambda** — adds an event-driven serverless flow.
 5. **EventBridge** for one cross-service flow — modern messaging.
 6. **Small React frontend** calling API Gateway — makes the demo video much more compelling.
-7. **Grafana Cloud** for the dashboard instead of CloudWatch — recognizable, free tier.
+7. **Grafana Alerting** — set up alert rules in Grafana to complement CloudWatch alarms, feeding the same SNS topic.
 
 ---
 

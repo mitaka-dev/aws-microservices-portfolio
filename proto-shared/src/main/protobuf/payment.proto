@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option java_package = "com.portfolio.proto.payment";
+option java_outer_classname = "PaymentProto";
+option java_multiple_files = true;
+
+package payment;
+
+service PaymentService {
+  rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
+}
+
+enum PaymentMethod {
+  CREDIT_CARD = 0;
+  PAYPAL = 1;
+  BANK_TRANSFER = 2;
+}
+
+enum PaymentStatus {
+  SUCCESS = 0;
+  FAILED = 1;
+}
+
+message PaymentRequest {
+  string order_id = 1;
+  double amount = 2;
+  string currency = 3;
+  PaymentMethod method = 4;
+}
+
+message PaymentResponse {
+  string payment_id = 1;
+  PaymentStatus status = 2;
+  string failure_reason = 3;
+}

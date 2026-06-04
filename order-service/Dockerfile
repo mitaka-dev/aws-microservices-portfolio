@@ -9,6 +9,7 @@ COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
 COPY file-service/pom.xml file-service/
+COPY payment-service/pom.xml payment-service/
 
 COPY proto-shared/src/ proto-shared/src/
 

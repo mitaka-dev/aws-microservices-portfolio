@@ -16,7 +16,7 @@ public class OrderEventPublisher {
         this.topicArn = topicArn;
     }
 
-    public void publishOrderCreated(OrderCreatedEvent event) {
-        snsTemplate.sendNotification(topicArn, event, "OrderCreated");
+    public void publishOrderConfirmed(OrderConfirmedEvent event) {
+        snsTemplate.sendNotification(topicArn, event, "OrderConfirmed");
     }
 }

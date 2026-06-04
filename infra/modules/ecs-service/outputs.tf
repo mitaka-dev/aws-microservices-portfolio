@@ -9,8 +9,8 @@ output "task_sg_id" {
 }
 
 output "target_group_arn_suffix" {
-  description = "ALB target group ARN suffix for CloudWatch metrics (format: targetgroup/name/id)"
-  value       = aws_lb_target_group.this.arn_suffix
+  description = "ALB target group ARN suffix for CloudWatch metrics (empty string when enable_alb_listener = false)"
+  value       = var.enable_alb_listener ? aws_lb_target_group.this[0].arn_suffix : ""
 }
 
 output "log_group_name" {

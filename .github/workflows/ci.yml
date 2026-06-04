@@ -39,7 +39,7 @@ jobs:
         id: detect
         run: |
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "all")
-          SERVICES=(user-service catalog-service order-service file-service)
+          SERVICES=(user-service catalog-service order-service file-service payment-service)
           TO_BUILD=""
 
           if echo "$CHANGED" | grep -qE "^(pom\.xml|proto-shared/)"; then

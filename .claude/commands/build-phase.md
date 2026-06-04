@@ -13,9 +13,10 @@ The project status (loaded via SessionStart hook) tells you the next planned pha
 Workflow:
 
 0. **Branch check — MANDATORY, do this before anything else:**
-   Run `git branch --show-current`. If the current branch is not named `phase-<N>-*` for this phase, STOP and tell the user:
-   > "You're on branch `<current>`. Create a branch for this phase first: `git checkout -b phase-<N>-<short-slug>`"
-   Do not proceed until the user confirms they are on the correct branch.
+   Run `git branch --show-current`. If the current branch is not named `phase-<N>-*` for this phase, ask the user:
+   > "You're on branch `<current>`. Should I create `phase-<N>-<short-slug>` and switch to it now?"
+   If the user confirms (yes / ok / sure / any positive answer), run `git checkout -b phase-<N>-<short-slug>` and continue the workflow without further interruption.
+   If the user declines, stop and wait for them to handle branching manually.
 
 1. Read the phase from `docs/plan/BUILD-PLAN.md`: goal, tasks, exit criteria, and any dependencies. If the phase checkbox is already `- [x]`, stop immediately — tell the user it's done and show the next unchecked phase instead.
 2. Briefly restate the goal in your own words and list any CLAUDE.md workarounds or skills that apply (e.g., SB4 workarounds, `postgresql-flyway-migrations`, `terraform-module-conventions`).

@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
@@ -41,6 +42,15 @@ public class Order {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(name = "payment_id")
+    private String paymentId;
+
+    @Column(name = "updated_at")
+    private Instant updatedAt = Instant.now();
+
+    @PreUpdate
+    void onUpdate() { this.updatedAt = Instant.now(); }
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public String getUserId() { return userId; }
@@ -53,4 +63,8 @@ public class Order {
     public void setItems(List<OrderItem> items) { this.items = items; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public String getPaymentId() { return paymentId; }
+    public void setPaymentId(String paymentId) { this.paymentId = paymentId; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

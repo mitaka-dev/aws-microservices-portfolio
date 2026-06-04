@@ -493,7 +493,7 @@ payment-service  ──►  proto-shared
 ---
 
 ### Phase 9 — Saga Pattern + Outbox
-- [ ] **Not started**
+- [x] **Complete**
 
 **Goal:** Make the `POST /orders` flow resilient to partial failures across service boundaries. Introduce an explicit order state machine (PENDING → PAID → CONFIRMED), a compensating transaction (refund) when stock decrement fails, and the outbox pattern to guarantee SNS event delivery survives pod crashes.
 

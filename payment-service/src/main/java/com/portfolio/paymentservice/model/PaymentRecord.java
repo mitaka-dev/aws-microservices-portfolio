@@ -62,6 +62,7 @@ public class PaymentRecord {
     public String getCurrency() { return currency; }
     public PaymentMethod getMethod() { return method; }
     public PaymentStatus getStatus() { return status; }
+    public void setStatus(PaymentStatus status) { this.status = status; }
     public String getFailureReason() { return failureReason; }
     public Instant getCreatedAt() { return createdAt; }
 }

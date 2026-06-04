@@ -6,6 +6,7 @@ import com.portfolio.proto.payment.PaymentMethod;
 import com.portfolio.proto.payment.PaymentRequest;
 import com.portfolio.proto.payment.PaymentResponse;
 import com.portfolio.proto.payment.PaymentServiceGrpc;
+import com.portfolio.proto.payment.RefundRequest;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import org.junit.jupiter.api.AfterAll;
@@ -109,5 +110,29 @@ class PaymentGrpcServiceIT {
 
         assertThat(response.getStatus()).isEqualTo(com.portfolio.proto.payment.PaymentStatus.SUCCESS);
         assertThat(response.getPaymentId()).isNotBlank();
+    }
+
+    @Test
+    void refundPayment_marks_record_refunded() {
+        var processRequest = PaymentRequest.newBuilder()
+            .setOrderId(UUID.randomUUID().toString())
+            .setAmount(75.00)
+            .setCurrency("USD")
+            .setMethod(PaymentMethod.CREDIT_CARD)
+            .build();
+        PaymentResponse processResponse = stub.processPayment(processRequest);
+        assertThat(processResponse.getPaymentId()).isNotBlank();
+
+        var refundRequest = RefundRequest.newBuilder()
+            .setPaymentId(processResponse.getPaymentId())
+            .setReason("test refund")
+            .build();
+        var refundResponse = stub.refundPayment(refundRequest);
+
+        assertThat(refundResponse.getSuccess()).isTrue();
+
+        var record = paymentRecordRepository.findById(UUID.fromString(processResponse.getPaymentId()));
+        assertThat(record).isPresent();
+        assertThat(record.get().getStatus()).isEqualTo(PaymentStatus.REFUNDED);
     }
 }

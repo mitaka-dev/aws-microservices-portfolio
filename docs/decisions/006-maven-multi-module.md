@@ -2,7 +2,7 @@
 
 ## Context
 
-The monorepo contains five Maven modules: `proto-shared`, `user-service`, `catalog-service`, `order-service`, `file-service`. All services share a technology stack (Spring Boot 4, Spring Cloud AWS, AWS SDK v2, gRPC, Testcontainers) and need consistent dependency versions. Build tooling must support running integration tests with Testcontainers, producing executable JARs for Docker, and enabling per-service builds in CI.
+The monorepo contains seven Maven modules: `proto-catalog`, `proto-payment`, `user-service`, `catalog-service`, `order-service`, `payment-service`, `file-service`. Proto modules are split per server — each service depends only on the proto artifact it uses, so changing one service's gRPC schema does not trigger recompilation of unrelated services. All services share a technology stack (Spring Boot 4, Spring Cloud AWS, AWS SDK v2, gRPC, Testcontainers) and need consistent dependency versions. Build tooling must support running integration tests with Testcontainers, producing executable JARs for Docker, and enabling per-service builds in CI.
 
 ## Decision
 
@@ -19,7 +19,7 @@ The reactor build order is inferred from `<modules>` declarations and inter-modu
 **Positive:**
 - A single version upgrade in the parent POM propagates to all modules. Upgrading Spring Boot 4.0.3 → 4.0.6 required editing one line.
 - The `spring-boot-maven-plugin` with `<classifier>exec</classifier>` produces two JARs per service: a thin JAR (primary artifact, used by Failsafe) and a fat `*-exec.jar` (used by Docker). This cleanly separates integration testing from containerisation.
-- `./mvnw -pl order-service -am verify` builds only `proto-shared` and `order-service` — the `-am` flag automatically resolves the upstream module graph.
+- `./mvnw -pl order-service -am verify` builds only `proto-catalog`, `proto-payment`, and `order-service` — the `-am` flag automatically resolves the upstream module graph.
 - Testcontainers JVM reuse (`testcontainers.reuse.enable=true`) works across modules because all tests run in the same Maven JVM (Failsafe `forkCount=0`).
 
 **Negative:**

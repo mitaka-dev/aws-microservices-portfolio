@@ -1,6 +1,6 @@
 # AWS Microservices Portfolio
 
-Four production-grade microservices on AWS ECS Fargate: user management, product catalog, order processing, and file uploads — connected via SNS/SQS async messaging and gRPC, with distributed tracing through X-Ray and zero-credential CI/CD via GitHub Actions OIDC.
+Five production-grade microservices on AWS ECS Fargate: user management, product catalog, order processing, payment, and file uploads — connected via gRPC and SNS async messaging, with distributed tracing through X-Ray and zero-credential CI/CD via GitHub Actions OIDC.
 
 [![CI](https://github.com/mitaka-dev/aws-microservices-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/mitaka-dev/aws-microservices-portfolio/actions/workflows/ci.yml)
 ![Java 25](https://img.shields.io/badge/Java-25-blue)
@@ -86,9 +86,11 @@ k6 run -e BASE_URL="$BASE" -e TOKEN="$TOKEN" tests/load/smoke.js
 aws-microservices-portfolio/
 ├── user-service/          Spring Boot 4, Flyway + RDS, Cognito JWT resource server
 ├── catalog-service/       DynamoDB single-table, Redis cache-aside, gRPC server :9090
-├── order-service/         SNS/SQS, gRPC client → catalog, order state machine
+├── order-service/         Saga pattern + outbox, gRPC clients → catalog + payment, SNS, idempotency
+├── payment-service/       gRPC-only (no ALB), Strategy pattern, Flyway + RDS, idempotent RPCs
 ├── file-service/          S3 presigned URLs (raw AWS SDK v2)
-├── proto-shared/          Protobuf definitions + generated gRPC stubs (shared BOM)
+├── proto-catalog/         Protobuf + gRPC stubs for catalog-service (used by catalog + order)
+├── proto-payment/         Protobuf + gRPC stubs for payment-service (used by payment + order)
 ├── infra/
 │   ├── envs/dev/          OpenTofu root module (~180 resources, Phases 1–7)
 │   └── modules/           Reusable modules: network, ecs-service, alb, rds, ...
@@ -107,10 +109,11 @@ aws-microservices-portfolio/
 │   ├── e2e-aws.sh         Same suite against deployed AWS environment
 │   └── load/              k6: smoke.js · scale.js (triggers auto-scaling) · order-flow.js
 └── docs/
-    ├── decisions/         Architecture Decision Records (ADRs 001–007)
+    ├── decisions/         Architecture Decision Records (ADRs 001–008)
+    ├── runbooks/          Operational runbooks (stock compensation dead-letter, etc.)
     └── diagrams/          Architecture diagram source (.mmd)
 ```
 
 ## Architecture Decisions
 
-See [`docs/decisions/`](docs/decisions/) for the full ADR set covering: Fargate vs EC2, API Gateway + ALB two-tier routing, Cloud Map vs service mesh, SNS/SQS vs RabbitMQ, monorepo structure, Maven multi-module, and Cognito vs self-issued JWT.
+See [`docs/decisions/`](docs/decisions/) for the full ADR set covering: Fargate vs EC2, API Gateway + ALB two-tier routing, Cloud Map vs service mesh, SNS/SQS vs RabbitMQ, monorepo structure, Maven multi-module, Cognito vs self-issued JWT, and DynamoDB cursor pagination + HikariCP sizing.

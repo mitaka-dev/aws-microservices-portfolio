@@ -158,7 +158,7 @@ Time-series metrics from multiple sources: ALB (request count, latency, 5xx rate
 **Connected to:** CloudWatch Dashboard (visualisation), CloudWatch Alarms (alerting), Application Auto Scaling (scaling signals).
 
 ### CloudWatch Dashboard
-A single dashboard with 10 widgets covering all four services: ALB requests and latency, ECS CPU and memory per service, RDS connections and CPU, SQS visible/age metrics, DynamoDB RCU/WCU. Gives a full system overview in one view.
+A single dashboard with 10 widgets covering all five services: ALB requests and latency, ECS CPU and memory per service, RDS connections and CPU, SQS visible/age metrics, DynamoDB RCU/WCU. Gives a full system overview in one view.
 
 **Connected to:** CloudWatch Metrics.
 
@@ -168,7 +168,7 @@ A single dashboard with 10 widgets covering all four services: ALB requests and 
 **Connected to:** CloudWatch Metrics (signal source), SNS alarm topic (notification delivery).
 
 ### X-Ray (via ADOT sidecar)
-Distributed tracing across all four services. Each ECS task runs an AWS Distro for OpenTelemetry (ADOT) sidecar container alongside the application. The OTel Java agent (2.7.0) instruments Spring Boot automatically — HTTP requests, gRPC calls, JDBC queries, and SQS message processing all generate trace spans. Traces are visible in the X-Ray console and AWS Service Map.
+Distributed tracing across all five services. Each ECS task runs an AWS Distro for OpenTelemetry (ADOT) sidecar container alongside the application. The OTel Java agent (2.7.0) instruments Spring Boot automatically — HTTP requests, gRPC calls, JDBC queries, and SQS message processing all generate trace spans. Traces are visible in the X-Ray console and AWS Service Map.
 
 **Connected to:** ECS tasks (sidecar + Java agent), X-Ray service (trace ingestion).
 

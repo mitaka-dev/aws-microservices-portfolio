@@ -12,7 +12,7 @@ The project has modest traffic requirements (demo/portfolio scale) but should de
 
 ## Decision
 
-Use **ECS Fargate** for all four services.
+Use **ECS Fargate** for all five services.
 
 Fargate runs containers directly without provisioning or patching EC2 instances. Each task gets its own isolated microVM (Firecracker), billed per vCPU-second and GB-second. Task definitions specify CPU and memory; Fargate handles placement, bin-packing, and host maintenance invisibly.
 
@@ -31,6 +31,6 @@ Fargate runs containers directly without provisioning or patching EC2 instances.
 
 ## Alternatives Considered
 
-**EC2 launch type:** Cheaper at sustained load through bin-packing. Requires managing node groups, AMI updates, and capacity reservations. Appropriate when running dozens of services on a shared cluster; overkill for four services on a portfolio.
+**EC2 launch type:** Cheaper at sustained load through bin-packing. Requires managing node groups, AMI updates, and capacity reservations. Appropriate when running dozens of services on a shared cluster; overkill for five services on a portfolio.
 
 **EKS (managed Kubernetes):** Richer ecosystem (Argo, KEDA, Istio, Karpenter) and the industry-standard platform for large engineering organisations. Adds ~$0.10/hour for the control plane and significant operational complexity (node pools, RBAC, ingress controllers, DNS plugins). The right choice when you need advanced scheduling, multi-tenancy, or a service mesh — none of which this project requires.

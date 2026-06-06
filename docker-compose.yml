@@ -100,12 +100,15 @@ services:
       DB_NAME: orderdb
       LOCALSTACK_URL: http://localstack:4566
       CATALOG_GRPC_HOST: catalog-service
+      REDIS_HOST: redis
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
         condition: service_healthy
       catalog-service:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]

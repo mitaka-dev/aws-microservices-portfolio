@@ -10,7 +10,8 @@
   <packaging>pom</packaging>
 
   <modules>
-    <module>proto-shared</module>
+    <module>proto-catalog</module>
+    <module>proto-payment</module>
     <module>user-service</module>
     <module>catalog-service</module>
     <module>order-service</module>

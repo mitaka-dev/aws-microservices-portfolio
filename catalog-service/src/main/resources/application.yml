@@ -1,6 +1,9 @@
 spring:
   application:
     name: catalog-service
+  threads:
+    virtual:
+      enabled: true
   autoconfigure:
     exclude:
       # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.

@@ -1,5 +1,6 @@
 package com.portfolio.catalogservice.repository;
 
+import com.portfolio.catalogservice.dto.CatalogResultPage;
 import com.portfolio.catalogservice.model.CatalogItem;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
@@ -9,6 +10,7 @@ import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
@@ -58,6 +60,22 @@ public class CatalogItemRepository {
             .toList();
     }
 
+    public CatalogResultPage findPage(int limit, Map<String, AttributeValue> exclusiveStartKey) {
+        var requestBuilder = QueryEnhancedRequest.builder()
+            .queryConditional(QueryConditional.keyEqualTo(
+                Key.builder().partitionValue("PRODUCTS").build()))
+            .limit(limit);
+        if (exclusiveStartKey != null) {
+            requestBuilder.exclusiveStartKey(exclusiveStartKey);
+        }
+        var iterator = gsi1.query(requestBuilder.build()).iterator();
+        if (!iterator.hasNext()) {
+            return new CatalogResultPage(List.of(), null);
+        }
+        var page = iterator.next();
+        return new CatalogResultPage(page.items(), page.lastEvaluatedKey());
+    }
+
     public boolean decrementStock(String id, int qty) {
         try {
             dynamoDbClient.updateItem(r -> r
@@ -74,5 +92,20 @@ public class CatalogItemRepository {
         } catch (ConditionalCheckFailedException e) {
             return false;
         }
+    }
+
+    public int incrementStock(String id, int qty) {
+        var result = dynamoDbClient.updateItem(r -> r
+            .tableName(tableName)
+            .key(Map.of(
+                "pk", AttributeValue.fromS("PRODUCT#" + id),
+                "sk", AttributeValue.fromS("PRODUCT#" + id)))
+            .updateExpression("SET #stock = #stock + :qty")
+            .conditionExpression("attribute_exists(pk)")
+            .expressionAttributeNames(Map.of("#stock", "stock"))
+            .expressionAttributeValues(Map.of(
+                ":qty", AttributeValue.fromN(String.valueOf(qty))))
+            .returnValues(software.amazon.awssdk.services.dynamodb.model.ReturnValue.UPDATED_NEW));
+        return Integer.parseInt(result.attributes().get("stock").n());
     }
 }

@@ -5,7 +5,8 @@ WORKDIR /build
 # Copy Maven wrapper and all pom files first for dependency layer caching
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-COPY proto-shared/pom.xml proto-shared/
+COPY proto-catalog/pom.xml proto-catalog/
+COPY proto-payment/pom.xml proto-payment/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
@@ -17,7 +18,6 @@ RUN chmod +x mvnw && ./mvnw -pl user-service -am dependency:resolve dependency:r
     --no-transfer-progress -q
 
 # Copy source and build
-COPY proto-shared/src/ proto-shared/src/
 COPY user-service/src/ user-service/src/
 RUN ./mvnw -pl user-service -am clean package -DskipTests --no-transfer-progress
 

@@ -1,6 +1,9 @@
 spring:
   application:
     name: user-service
+  threads:
+    virtual:
+      enabled: true
   autoconfigure:
     exclude:
       # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
@@ -9,6 +12,15 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+  datasource:
+    hikari:
+      # 256 vCPU Fargate: (2 * cores) + 1 = 5 max connections
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 3000
+      max-lifetime: 1800000
+      keepalive-time: 60000
+      validation-timeout: 2000
 
 management:
   endpoints:

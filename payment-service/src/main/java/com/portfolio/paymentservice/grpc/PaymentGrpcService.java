@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -44,6 +45,17 @@ public class PaymentGrpcService extends PaymentServiceGrpc.PaymentServiceImplBas
     @Override
     @Transactional
     public void processPayment(PaymentRequest request, StreamObserver<PaymentResponse> responseObserver) {
+        // Idempotency: if this orderId already has a SUCCESS record, return it without re-charging.
+        // FAILED records are allowed to be retried (no charge was taken).
+        Optional<PaymentRecord> existing = paymentRecordRepository.findByOrderId(request.getOrderId());
+        if (existing.isPresent() && existing.get().getStatus() == PaymentStatus.SUCCESS) {
+            log.info("Idempotent processPayment for orderId={} — returning existing SUCCESS record",
+                request.getOrderId());
+            responseObserver.onNext(toSuccessResponse(existing.get()));
+            responseObserver.onCompleted();
+            return;
+        }
+
         String methodTag = request.getMethod().name().toLowerCase();
         meterRegistry.counter("payment.attempts.total", "method", methodTag).increment();
 
@@ -69,30 +81,48 @@ public class PaymentGrpcService extends PaymentServiceGrpc.PaymentServiceImplBas
             meterRegistry.counter("payment.failure.total", "method", methodTag).increment();
         }
 
-        PaymentResponse response = PaymentResponse.newBuilder()
+        responseObserver.onNext(PaymentResponse.newBuilder()
             .setPaymentId(saved.getId().toString())
             .setStatus(result.success()
                 ? com.portfolio.proto.payment.PaymentStatus.SUCCESS
                 : com.portfolio.proto.payment.PaymentStatus.FAILED)
             .setFailureReason(result.failureReason())
-            .build();
-
-        responseObserver.onNext(response);
+            .build());
         responseObserver.onCompleted();
     }
 
     @Override
     public void refundPayment(RefundRequest request, StreamObserver<RefundResponse> responseObserver) {
         UUID paymentId = UUID.fromString(request.getPaymentId());
-        if (paymentRecordRepository.existsById(paymentId)) {
-            paymentRecordRepository.updateStatus(paymentId, PaymentStatus.REFUNDED);
-            log.info("Refunded paymentId={}", paymentId);
-            responseObserver.onNext(RefundResponse.newBuilder().setSuccess(true).build());
-        } else {
+        PaymentRecord record = paymentRecordRepository.findById(paymentId).orElse(null);
+
+        if (record == null) {
             log.warn("Refund for unknown paymentId={}", paymentId);
             responseObserver.onNext(RefundResponse.newBuilder().setSuccess(false).build());
+            responseObserver.onCompleted();
+            return;
         }
+
+        // Idempotency: if already refunded, return success without a second DB write.
+        if (record.getStatus() == PaymentStatus.REFUNDED) {
+            log.info("Idempotent refundPayment for paymentId={} — already REFUNDED", paymentId);
+            responseObserver.onNext(RefundResponse.newBuilder().setSuccess(true).build());
+            responseObserver.onCompleted();
+            return;
+        }
+
+        paymentRecordRepository.updateStatus(paymentId, PaymentStatus.REFUNDED);
+        log.info("Refunded paymentId={}", paymentId);
+        responseObserver.onNext(RefundResponse.newBuilder().setSuccess(true).build());
         responseObserver.onCompleted();
+    }
+
+    private PaymentResponse toSuccessResponse(PaymentRecord record) {
+        return PaymentResponse.newBuilder()
+            .setPaymentId(record.getId().toString())
+            .setStatus(com.portfolio.proto.payment.PaymentStatus.SUCCESS)
+            .setFailureReason("")
+            .build();
     }
 
     private PaymentMethod toModelMethod(com.portfolio.proto.payment.PaymentMethod protoMethod) {

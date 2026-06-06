@@ -5,22 +5,23 @@ WORKDIR /build
 # Copy all POMs for layer caching
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-COPY proto-shared/pom.xml proto-shared/
+COPY proto-catalog/pom.xml proto-catalog/
+COPY proto-payment/pom.xml proto-payment/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
 COPY file-service/pom.xml file-service/
 COPY payment-service/pom.xml payment-service/
 
-# proto-shared sources needed to generate stubs before payment-service can compile
-COPY proto-shared/src/ proto-shared/src/
+# proto-payment sources needed to generate stubs before payment-service can compile
+COPY proto-payment/src/ proto-payment/src/
 
 # 1) Install root POM so child POMs can resolve their parent from local repo
-# 2) Install proto-shared (payment-service depends on its generated stubs)
+# 2) Install proto-payment (payment-service depends on its generated stubs)
 # 3) Pre-resolve payment-service external dependencies (cached until pom changes)
 RUN chmod +x mvnw && \
     ./mvnw -N install --no-transfer-progress -q && \
-    ./mvnw -pl proto-shared clean install -DskipTests --no-transfer-progress -q && \
+    ./mvnw -pl proto-payment clean install -DskipTests --no-transfer-progress -q && \
     ./mvnw -pl payment-service dependency:resolve dependency:resolve-plugins \
         --no-transfer-progress -q
 

@@ -8,10 +8,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface PaymentRecordRepository extends JpaRepository<PaymentRecord, UUID> {
+
+    Optional<PaymentRecord> findByOrderId(String orderId);
 
     @Transactional
     @Modifying

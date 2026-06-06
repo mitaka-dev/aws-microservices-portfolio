@@ -1,14 +1,16 @@
 package com.portfolio.orderservice.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.portfolio.orderservice.dto.CreateOrderRequest;
 import com.portfolio.orderservice.dto.OrderResponse;
 import com.portfolio.orderservice.grpc.CatalogGrpcClient;
 import com.portfolio.orderservice.grpc.PaymentGrpcClient;
 import com.portfolio.orderservice.messaging.OrderConfirmedEvent;
-import com.portfolio.orderservice.messaging.OrderEventPublisher;
 import com.portfolio.orderservice.model.Order;
 import com.portfolio.orderservice.model.OrderItem;
 import com.portfolio.orderservice.model.OrderStatus;
+import com.portfolio.orderservice.model.OutboxEvent;
 import com.portfolio.orderservice.repository.OrderRepository;
 import com.portfolio.proto.payment.PaymentMethod;
 import com.portfolio.proto.payment.PaymentResponse;
@@ -33,22 +35,26 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final PaymentGrpcClient paymentGrpcClient;
     private final CatalogGrpcClient catalogGrpcClient;
-    private final OrderEventPublisher eventPublisher;
+    private final OrderSagaHelper sagaHelper;
+    private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
 
     public OrderService(OrderRepository orderRepository,
                         PaymentGrpcClient paymentGrpcClient,
                         CatalogGrpcClient catalogGrpcClient,
-                        OrderEventPublisher eventPublisher,
+                        OrderSagaHelper sagaHelper,
+                        ObjectMapper objectMapper,
                         MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.paymentGrpcClient = paymentGrpcClient;
         this.catalogGrpcClient = catalogGrpcClient;
-        this.eventPublisher = eventPublisher;
+        this.sagaHelper = sagaHelper;
+        this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
     }
 
-    @Transactional
+    // No @Transactional here — each orderRepository.save() commits independently
+    // as a durable saga checkpoint via Spring Data's own @Transactional on save().
     public OrderResponse createOrder(CreateOrderRequest req) {
         List<OrderItem> items = req.items().stream().map(itemReq -> {
             OrderItem item = new OrderItem();
@@ -67,7 +73,7 @@ public class OrderService {
         order.setTotalAmount(total);
         items.forEach(i -> i.setOrder(order));
         order.setItems(items);
-        Order saved = orderRepository.save(order);
+        Order saved = orderRepository.save(order);  // checkpoint 1: PENDING
 
         PaymentMethod method = parsePaymentMethod(req.paymentMethod());
         PaymentResponse paymentResponse = paymentGrpcClient.processPayment(
@@ -81,22 +87,43 @@ public class OrderService {
                 "Payment failed: " + paymentResponse.getFailureReason());
         }
 
-        saved.setStatus(OrderStatus.CONFIRMED);
+        saved.setStatus(OrderStatus.PAID);
+        saved.setPaymentId(paymentResponse.getPaymentId());
+        orderRepository.save(saved);  // checkpoint 2: PAID — money taken
 
-        req.items().forEach(itemReq -> {
+        boolean stockFailed = false;
+        for (var itemReq : req.items()) {
             try {
                 catalogGrpcClient.decrementStock(itemReq.productId(), itemReq.quantity());
             } catch (Exception e) {
-                log.error("Stock decrement failed for productId={}, continuing", itemReq.productId(), e);
+                log.error("Stock decrement failed for productId={}, orderId={}", itemReq.productId(), saved.getId(), e);
+                stockFailed = true;
+                break;
             }
-        });
+        }
 
-        orderRepository.save(saved);
+        if (stockFailed) {
+            saved.setStatus(OrderStatus.COMPENSATING);
+            orderRepository.save(saved);
+            try {
+                paymentGrpcClient.refundPayment(saved.getPaymentId(), "Stock decrement failed");
+                log.info("Refund succeeded for orderId={}", saved.getId());
+            } catch (Exception e) {
+                log.error("Refund failed for orderId={}, paymentId={} — left in COMPENSATING for recovery job",
+                    saved.getId(), saved.getPaymentId(), e);
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Order processing failed");
+            }
+            saved.setStatus(OrderStatus.FAILED);
+            orderRepository.save(saved);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Order processing failed");
+        }
+
+        // checkpoint 3: CONFIRMED + outbox row — atomic
+        String payload = serializeEvent(new OrderConfirmedEvent(saved.getId().toString(), saved.getUserId(), total));
+        OutboxEvent outboxEvent = new OutboxEvent("Order", saved.getId().toString(), "OrderConfirmed", payload);
+        sagaHelper.confirmWithOutbox(saved, outboxEvent);
+
         meterRegistry.counter("orders.created.total").increment();
-
-        eventPublisher.publishOrderConfirmed(
-            new OrderConfirmedEvent(saved.getId().toString(), saved.getUserId(), total));
-
         return OrderResponse.from(saved);
     }
 
@@ -118,5 +145,13 @@ public class OrderService {
             case "BANK_TRANSFER" -> PaymentMethod.BANK_TRANSFER;
             default -> PaymentMethod.CREDIT_CARD;
         };
+    }
+
+    private String serializeEvent(OrderConfirmedEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize outbox event", e);
+        }
     }
 }

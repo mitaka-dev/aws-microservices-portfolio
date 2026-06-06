@@ -9,16 +9,23 @@ import com.portfolio.paymentservice.strategy.PaymentStrategy;
 import com.portfolio.proto.payment.PaymentRequest;
 import com.portfolio.proto.payment.PaymentResponse;
 import com.portfolio.proto.payment.PaymentServiceGrpc;
+import com.portfolio.proto.payment.RefundRequest;
+import com.portfolio.proto.payment.RefundResponse;
 import io.grpc.stub.StreamObserver;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class PaymentGrpcService extends PaymentServiceGrpc.PaymentServiceImplBase {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentGrpcService.class);
 
     private final Map<com.portfolio.proto.payment.PaymentMethod, PaymentStrategy> strategies;
     private final PaymentRecordRepository paymentRecordRepository;
@@ -71,6 +78,20 @@ public class PaymentGrpcService extends PaymentServiceGrpc.PaymentServiceImplBas
             .build();
 
         responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void refundPayment(RefundRequest request, StreamObserver<RefundResponse> responseObserver) {
+        UUID paymentId = UUID.fromString(request.getPaymentId());
+        if (paymentRecordRepository.existsById(paymentId)) {
+            paymentRecordRepository.updateStatus(paymentId, PaymentStatus.REFUNDED);
+            log.info("Refunded paymentId={}", paymentId);
+            responseObserver.onNext(RefundResponse.newBuilder().setSuccess(true).build());
+        } else {
+            log.warn("Refund for unknown paymentId={}", paymentId);
+            responseObserver.onNext(RefundResponse.newBuilder().setSuccess(false).build());
+        }
         responseObserver.onCompleted();
     }
 

@@ -8,6 +8,7 @@ package payment;
 
 service PaymentService {
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
+  rpc RefundPayment(RefundRequest) returns (RefundResponse);
 }
 
 enum PaymentMethod {
@@ -32,4 +33,13 @@ message PaymentResponse {
   string payment_id = 1;
   PaymentStatus status = 2;
   string failure_reason = 3;
+}
+
+message RefundRequest {
+  string payment_id = 1;
+  string reason = 2;
+}
+
+message RefundResponse {
+  bool success = 1;
 }

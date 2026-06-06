@@ -4,6 +4,8 @@ import com.portfolio.proto.payment.PaymentMethod;
 import com.portfolio.proto.payment.PaymentRequest;
 import com.portfolio.proto.payment.PaymentResponse;
 import com.portfolio.proto.payment.PaymentServiceGrpc;
+import com.portfolio.proto.payment.RefundRequest;
+import com.portfolio.proto.payment.RefundResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import jakarta.annotation.PreDestroy;
@@ -34,6 +36,13 @@ public class PaymentGrpcClient {
             .setAmount(amount)
             .setCurrency(currency)
             .setMethod(method)
+            .build());
+    }
+
+    public RefundResponse refundPayment(String paymentId, String reason) {
+        return stub.refundPayment(RefundRequest.newBuilder()
+            .setPaymentId(paymentId)
+            .setReason(reason)
             .build());
     }
 

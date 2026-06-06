@@ -585,7 +585,7 @@ FAILED  COMPENSATING → FAILED
 ---
 
 ### Phase 10 — Grafana + Amazon OpenSearch (ELK)
-- [ ] **Not started**
+- [x] **Complete**
 
 **Goal:** Supplement CloudWatch and X-Ray with two industry-standard tools: **Grafana** for rich shareable dashboards and **Amazon OpenSearch Service** for centralized log search and analytics (ELK pattern). Both are high-visibility CV keywords and demonstrate the ability to wire external observability tooling into an AWS-managed platform.
 
@@ -717,8 +717,9 @@ FAILED  COMPENSATING → FAILED
    - `007-cognito-over-self-issued-jwt.md`
    - Each one-page: Context / Decision / Consequences / Alternatives considered.
 3. Pin the repo on your GitHub profile. Link from CV and LinkedIn.
+4. **Work through `docs/manual-checklist.md`** — Grafana Cloud setup, all screenshots for the README, GitHub + CV links.
 
-**Exit criteria:** a stranger can read the README in 3 minutes and understand what you built, why, and what you'd do differently at scale.
+**Exit criteria:** a stranger can read the README in 3 minutes and understand what you built, why, and what you'd do differently at scale. All items in `docs/manual-checklist.md` checked off.
 
 ---
 

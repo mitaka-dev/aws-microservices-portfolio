@@ -1,0 +1,600 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_CLOUDWATCH",
+      "label": "CloudWatch",
+      "description": "CloudWatch data source (eu-west-1)",
+      "type": "datasource",
+      "pluginId": "cloudwatch",
+      "pluginName": "CloudWatch"
+    },
+    {
+      "name": "DS_XRAY",
+      "label": "X-Ray",
+      "description": "AWS X-Ray data source",
+      "type": "datasource",
+      "pluginId": "grafana-x-ray-datasource",
+      "pluginName": "AWS X-Ray"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana",    "id": "grafana",                    "name": "Grafana",    "version": "10.0.0" },
+    { "type": "datasource", "id": "cloudwatch",                 "name": "CloudWatch", "version": "1.0.0"  },
+    { "type": "datasource", "id": "grafana-x-ray-datasource",   "name": "AWS X-Ray",  "version": "1.0.0"  },
+    { "type": "panel",      "id": "timeseries",                 "name": "Time series","version": ""       }
+  ],
+  "description": "Portfolio microservices overview — ALB, ECS, RDS, SQS, DynamoDB, and payment metrics. Region: eu-west-1.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "tags": ["aws", "portfolio", "microservices", "ecs", "fargate"],
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Portfolio Overview",
+  "uid": "portfolio-overview",
+  "version": 1,
+
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+        "definition": "dimension_values(eu-west-1,AWS/ApplicationELB,RequestCount,LoadBalancer)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Load Balancer",
+        "multi": false,
+        "name": "load_balancer",
+        "options": [],
+        "query": "dimension_values(eu-west-1,AWS/ApplicationELB,RequestCount,LoadBalancer)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+        "definition": "dimension_values(eu-west-1,ECS/ContainerInsights,CpuUtilized,ServiceName)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "ECS Service",
+        "multi": true,
+        "name": "service_name",
+        "options": [],
+        "query": "dimension_values(eu-west-1,ECS/ContainerInsights,CpuUtilized,ServiceName)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "portfolio-dev-cluster", "value": "portfolio-dev-cluster" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "ECS Cluster",
+        "multi": false,
+        "name": "cluster_name",
+        "options": [{ "selected": true, "text": "portfolio-dev-cluster", "value": "portfolio-dev-cluster" }],
+        "query": "portfolio-dev-cluster",
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": "portfolio-dev-postgres", "value": "portfolio-dev-postgres" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "RDS Instance",
+        "multi": false,
+        "name": "rds_id",
+        "options": [{ "selected": true, "text": "portfolio-dev-postgres", "value": "portfolio-dev-postgres" }],
+        "query": "portfolio-dev-postgres",
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": "portfolio-dev-catalog", "value": "portfolio-dev-catalog" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "DynamoDB Table",
+        "multi": false,
+        "name": "dynamodb_table",
+        "options": [{ "selected": true, "text": "portfolio-dev-catalog", "value": "portfolio-dev-catalog" }],
+        "query": "portfolio-dev-catalog",
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": "portfolio-dev-orders-processing", "value": "portfolio-dev-orders-processing" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "SQS Queue",
+        "multi": false,
+        "name": "sqs_queue",
+        "options": [{ "selected": true, "text": "portfolio-dev-orders-processing", "value": "portfolio-dev-orders-processing" }],
+        "query": "portfolio-dev-orders-processing",
+        "type": "custom"
+      }
+    ]
+  },
+
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "ALB",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqpm" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "ALB Requests / min",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "LoadBalancer": ["$load_balancer"] },
+          "expression": "",
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "RequestCount",
+          "metricQueryType": 0,
+          "namespace": "AWS/ApplicationELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 2,
+      "title": "ALB p50 Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "LoadBalancer": ["$load_balancer"] },
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "TargetResponseTime",
+          "metricQueryType": 0,
+          "namespace": "AWS/ApplicationELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "p50"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 3,
+      "title": "ALB p99 Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "LoadBalancer": ["$load_balancer"] },
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "TargetResponseTime",
+          "metricQueryType": 0,
+          "namespace": "AWS/ApplicationELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "p99"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "title": "ECS Services",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 4,
+      "title": "ECS CPU Utilization",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": {
+            "ClusterName": ["$cluster_name"],
+            "ServiceName": ["$service_name"]
+          },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "CpuUtilized",
+          "metricQueryType": 0,
+          "namespace": "ECS/ContainerInsights",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "decmbytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 5,
+      "title": "ECS Memory Utilization (MB)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": {
+            "ClusterName": ["$cluster_name"],
+            "ServiceName": ["$service_name"]
+          },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "MemoryUtilized",
+          "metricQueryType": 0,
+          "namespace": "ECS/ContainerInsights",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 102,
+      "title": "Data Layer",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 27 },
+      "id": 6,
+      "title": "RDS Connections",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "DBInstanceIdentifier": ["$rds_id"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "DatabaseConnections",
+          "metricQueryType": 0,
+          "namespace": "AWS/RDS",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 27 },
+      "id": 7,
+      "title": "RDS CPU %",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "DBInstanceIdentifier": ["$rds_id"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "CPUUtilization",
+          "metricQueryType": 0,
+          "namespace": "AWS/RDS",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
+      "id": 8,
+      "title": "DynamoDB Consumed RCU",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "TableName": ["$dynamodb_table"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "ConsumedReadCapacityUnits",
+          "metricQueryType": 0,
+          "namespace": "AWS/DynamoDB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 35 },
+      "id": 9,
+      "title": "SQS Messages Visible",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "QueueName": ["$sqs_queue"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "ApproximateNumberOfMessagesVisible",
+          "metricQueryType": 0,
+          "namespace": "AWS/SQS",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Maximum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 35 },
+      "id": 10,
+      "title": "SQS Oldest Message Age",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "QueueName": ["$sqs_queue"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "ApproximateAgeOfOldestMessage",
+          "metricQueryType": 0,
+          "namespace": "AWS/SQS",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Maximum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 35 },
+      "id": 11,
+      "title": "DynamoDB Consumed WCU",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": { "TableName": ["$dynamodb_table"] },
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "ConsumedWriteCapacityUnits",
+          "metricQueryType": 0,
+          "namespace": "AWS/DynamoDB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 103,
+      "title": "Business Metrics — Payment Service",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 44 },
+      "id": 12,
+      "title": "Payment Attempts / min",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": {},
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "payment.attempts.total",
+          "metricQueryType": 0,
+          "namespace": "Portfolio/payment-service",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 44 },
+      "id": 13,
+      "title": "Payment Successes / min",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": {},
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "payment.success.total",
+          "metricQueryType": 0,
+          "namespace": "Portfolio/payment-service",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "red" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
+      "id": 14,
+      "title": "Payment Failures / min",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+          "dimensions": {},
+          "matchExact": false,
+          "metricEditorMode": 0,
+          "metricName": "payment.failure.total",
+          "metricQueryType": 0,
+          "namespace": "Portfolio/payment-service",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "eu-west-1",
+          "statistic": "Sum"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "id": 104,
+      "title": "Distributed Traces (X-Ray)",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "grafana-x-ray-datasource", "uid": "${DS_XRAY}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 53 },
+      "id": 15,
+      "title": "X-Ray Service Map",
+      "type": "grafana-x-ray-datasource",
+      "options": { "serviceGraphMode": "serviceMap" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-x-ray-datasource", "uid": "${DS_XRAY}" },
+          "queryType": "getServiceMap",
+          "region": "eu-west-1",
+          "refId": "A"
+        }
+      ]
+    },
+
+    {
+      "datasource": { "type": "grafana-x-ray-datasource", "uid": "${DS_XRAY}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 63 },
+      "id": 16,
+      "title": "X-Ray Traces",
+      "type": "grafana-x-ray-datasource",
+      "options": { "serviceGraphMode": "traces" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-x-ray-datasource", "uid": "${DS_XRAY}" },
+          "queryType": "getTraceSummaries",
+          "region": "eu-west-1",
+          "refId": "A"
+        }
+      ]
+    }
+
+  ]
+}

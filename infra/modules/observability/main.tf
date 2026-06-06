@@ -207,6 +207,25 @@ resource "aws_cloudwatch_dashboard" "portfolio" {
   })
 }
 
+# ── Grafana Cloud IAM user ─────────────────────────────────────────────────────
+# Read-only access to CloudWatch + X-Ray for Grafana Cloud SaaS data sources.
+# Credentials are created manually in the AWS console — never stored in TF state.
+
+resource "aws_iam_user" "grafana_cloud" {
+  name = "${local.name_prefix}-grafana-cloud"
+  tags = { Name = "${local.name_prefix}-grafana-cloud" }
+}
+
+resource "aws_iam_user_policy_attachment" "grafana_cloudwatch" {
+  user       = aws_iam_user.grafana_cloud.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "grafana_xray" {
+  user       = aws_iam_user.grafana_cloud.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayReadOnlyAccess"
+}
+
 # ── Alarms ─────────────────────────────────────────────────────────────────────
 
 # 5xx errors per service (ALB HTTPCode_Target_5XX_Count > 10 in 2 consecutive 1-min periods)

@@ -1,10 +1,10 @@
 # Project Status
 
 ## Current Phase
-Phase 10 — Grafana + Amazon OpenSearch (ELK)
+Phase 11 — Code Review & Performance Hardening
 
 ## Summary
-Phase 9 complete. Saga pattern + outbox implemented in order-service. `OrderStatus` extended with `PAID` and `COMPENSATING`. `payment.proto` extended with `RefundPayment` RPC. order-service `POST /orders` flow rewritten as explicit saga: save PENDING → gRPC ProcessPayment → save PAID+paymentId → gRPC DecrementStock → on stock failure: save COMPENSATING → gRPC RefundPayment → save FAILED; on success: atomic `@Transactional` save CONFIRMED + outbox row. `OutboxPoller` SmartLifecycle publishes SNS events every 5s from `outbox_events` table. `OrderRecoveryJob` retries stuck COMPENSATING orders every 5 min. Flyway migrations V2 (payment_id + updated_at columns) and V3 (outbox_events table + partial index). `./mvnw verify` green: 18 IT tests across all 5 services.
+Phase 10 complete. Grafana Cloud (SaaS free tier) integration. IAM user `portfolio-dev-grafana-cloud` added to observability module with `CloudWatchReadOnlyAccess` + `AWSXRayReadOnlyAccess` policies. Importable dashboard JSON at `docs/grafana/portfolio-dashboard.json`: 16 panels across ALB, ECS, RDS, SQS, DynamoDB, payment custom metrics, X-Ray service map and traces. Template variables auto-discover ECS service names and load balancer from CloudWatch; cluster/RDS/DynamoDB/SQS identifiers default to dev env values. Zero AWS infra cost (Grafana Cloud free tier). `tofu plan` shows 3 new IAM resources, no destructive changes.
 
 ## Completed Phases
 - Phase 0 — Local Foundation: Maven monorepo, `user-service`, Flyway, Testcontainers IT tests passing.
@@ -19,6 +19,7 @@ Phase 9 complete. Saga pattern + outbox implemented in order-service. `OrderStat
 - Phase 7 — CI/CD: GitHub Actions via OIDC (no long-lived credentials). `ci.yml`: test on PR + build/push/deploy on push to main (git-diff service detection). `infra.yml`: tofu plan on infra/** PRs, apply on dispatch. `load-test.yml`: k6 smoke on dispatch. `infra/modules/github-oidc`: OIDC provider + `portfolio-dev-ci` role. `*.tfvars` gitignore narrowed to `*.secret.tfvars`; `terraform.tfvars` committed.
 - Phase 8 — Payment Service: 5th microservice `payment-service`, gRPC-only (port 9090, no ALB), Strategy pattern (CreditCard/PayPal/BankTransfer stubs), `payment_records` table via Flyway. order-service `POST /orders` now synchronous: payment gRPC → DecrementStock gRPC → SNS OrderConfirmed. SQS consumer removed from order-service. ECR repo `portfolio-dev-payment-service`. ecs-service module supports `enable_alb_listener = false`. Business metrics: payment.attempts/success/failure.total tagged by method. 15 IT tests green.
 - Phase 9 — Saga Pattern + Outbox: Explicit order saga (PENDING→PAID→CONFIRMED, COMPENSATING→FAILED). `RefundPayment` gRPC added to payment-service. `outbox_events` table with `OutboxPoller` SmartLifecycle (5s poll → SNS). `OrderRecoveryJob` retries stuck COMPENSATING orders every 5 min. Flyway V2+V3. 18 IT tests green.
+- Phase 10 — Grafana Cloud: IAM user `portfolio-dev-grafana-cloud` (CloudWatch + X-Ray read-only). Importable dashboard `docs/grafana/portfolio-dashboard.json` with 16 panels (ALB, ECS, RDS, SQS, DynamoDB, payment metrics, X-Ray service map + traces). Grafana Cloud SaaS free tier — zero AWS infra cost.
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.

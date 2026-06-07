@@ -4,18 +4,22 @@ WORKDIR /build
 
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-COPY proto-shared/pom.xml proto-shared/
+COPY proto-catalog/pom.xml proto-catalog/
+COPY proto-payment/pom.xml proto-payment/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
 COPY file-service/pom.xml file-service/
 COPY payment-service/pom.xml payment-service/
 
-COPY proto-shared/src/ proto-shared/src/
+# order-service depends on both proto stubs
+COPY proto-catalog/src/ proto-catalog/src/
+COPY proto-payment/src/ proto-payment/src/
 
 RUN chmod +x mvnw && \
     ./mvnw -N install --no-transfer-progress -q && \
-    ./mvnw -pl proto-shared clean install -DskipTests --no-transfer-progress -q && \
+    ./mvnw -pl proto-catalog clean install -DskipTests --no-transfer-progress -q && \
+    ./mvnw -pl proto-payment clean install -DskipTests --no-transfer-progress -q && \
     ./mvnw -pl order-service dependency:resolve dependency:resolve-plugins \
         --no-transfer-progress -q
 

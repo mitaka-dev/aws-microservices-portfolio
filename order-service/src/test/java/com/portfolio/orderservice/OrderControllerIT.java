@@ -6,8 +6,10 @@ import com.portfolio.orderservice.model.Order;
 import com.portfolio.orderservice.model.OrderStatus;
 import com.portfolio.orderservice.repository.OrderRepository;
 import com.portfolio.orderservice.repository.OutboxEventRepository;
+import com.portfolio.orderservice.repository.SagaCompensationStepRepository;
 import com.portfolio.orderservice.service.OrderRecoveryJob;
 import com.portfolio.proto.catalog.DecrementStockResponse;
+import com.portfolio.proto.catalog.IncrementStockResponse;
 import com.portfolio.proto.payment.PaymentMethod;
 import com.portfolio.proto.payment.PaymentResponse;
 import com.portfolio.proto.payment.PaymentStatus;
@@ -19,11 +21,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -67,6 +72,11 @@ class OrderControllerIT {
         DockerImageName.parse("localstack/localstack:3"))
         .withServices(SNS);
 
+    @SuppressWarnings("resource")
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379);
+
     static String topicArn;
 
     @DynamicPropertySource
@@ -79,6 +89,9 @@ class OrderControllerIT {
         r.add("spring.cloud.aws.credentials.secret-key", localstack::getSecretKey);
         r.add("spring.cloud.aws.region.static", localstack::getRegion);
         r.add("spring.cloud.aws.endpoint", () -> localstack.getEndpoint().toString());
+
+        r.add("spring.data.redis.host", redis::getHost);
+        r.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
 
         createSnsResources();
         r.add("aws.sns.orders-topic-arn", () -> topicArn);
@@ -96,28 +109,22 @@ class OrderControllerIT {
         }
     }
 
-    @MockitoBean
-    CatalogGrpcClient catalogGrpcClient;
+    @MockitoBean CatalogGrpcClient catalogGrpcClient;
+    @MockitoBean PaymentGrpcClient paymentGrpcClient;
 
-    @MockitoBean
-    PaymentGrpcClient paymentGrpcClient;
-
-    @Autowired
-    TestRestTemplate restTemplate;
-
-    @Autowired
-    OrderRepository orderRepository;
-
-    @Autowired
-    OutboxEventRepository outboxEventRepository;
-
-    @Autowired
-    OrderRecoveryJob orderRecoveryJob;
+    @Autowired TestRestTemplate restTemplate;
+    @Autowired OrderRepository orderRepository;
+    @Autowired OutboxEventRepository outboxEventRepository;
+    @Autowired SagaCompensationStepRepository compensationStepRepository;
+    @Autowired OrderRecoveryJob orderRecoveryJob;
 
     @BeforeEach
     void setUpMocks() {
         given(catalogGrpcClient.decrementStock(anyString(), anyInt()))
             .willReturn(DecrementStockResponse.newBuilder().setSuccess(true).setRemainingStock(9).build());
+
+        given(catalogGrpcClient.incrementStock(anyString(), anyInt()))
+            .willReturn(IncrementStockResponse.newBuilder().setSuccess(true).setRemainingStock(10).build());
 
         given(paymentGrpcClient.processPayment(anyString(), anyDouble(), anyString(), any(PaymentMethod.class)))
             .willReturn(PaymentResponse.newBuilder()
@@ -143,16 +150,38 @@ class OrderControllerIT {
         assertThat(created.getBody().get("status")).isEqualTo("CONFIRMED");
 
         UUID orderId = UUID.fromString(id);
-
-        // Wait for OutboxPoller to publish and mark the event
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
-            var events = outboxEventRepository.findTop10ByPublishedAtIsNullOrderByCreatedAtAsc();
             var allEvents = outboxEventRepository.findAll();
             var published = allEvents.stream()
                 .filter(e -> e.getAggregateId().equals(orderId.toString()) && e.getPublishedAt() != null)
                 .findFirst();
             assertThat(published).isPresent();
         });
+    }
+
+    @Test
+    void createOrder_idempotent_with_idempotency_key() {
+        var body = Map.of(
+            "userId", "user-idempotent",
+            "items", List.of(Map.of("productId", "prod-idem", "quantity", 1, "unitPrice", 9.99))
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Idempotency-Key", UUID.randomUUID().toString());
+        HttpEntity<Map> request = new HttpEntity<>(body, headers);
+
+        ResponseEntity<Map> first = restTemplate.postForEntity("/orders", request, Map.class);
+        ResponseEntity<Map> second = restTemplate.postForEntity("/orders", request, Map.class);
+
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // Both responses must return the same orderId — only one order was created.
+        assertThat(second.getBody().get("id")).isEqualTo(first.getBody().get("id"));
+        long orderCount = orderRepository.findAll().stream()
+            .filter(o -> "user-idempotent".equals(o.getUserId()))
+            .count();
+        assertThat(orderCount).isEqualTo(1);
     }
 
     @Test
@@ -171,6 +200,8 @@ class OrderControllerIT {
         ResponseEntity<Map> response = restTemplate.postForEntity("/orders", body, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+        assertThat(response.getBody().get("error")).asString().contains("Payment failed");
+        assertThat(response.getBody().get("status")).isEqualTo(402);
 
         var orders = orderRepository.findAll().stream()
             .filter(o -> "user-456".equals(o.getUserId()))
@@ -202,6 +233,8 @@ class OrderControllerIT {
         ResponseEntity<Map> response = restTemplate.postForEntity("/orders", body, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().get("error")).isEqualTo("Order processing failed");
+        assertThat(response.getBody().get("status")).isEqualTo(500);
 
         var orders = orderRepository.findAll().stream()
             .filter(o -> "user-stock-fail".equals(o.getUserId()))
@@ -214,7 +247,6 @@ class OrderControllerIT {
 
     @Test
     void recoveryJob_refunds_compensating_orders() {
-        // Seed a COMPENSATING order with old updatedAt to simulate a stuck saga
         String paymentId = UUID.randomUUID().toString();
         Order stuck = new Order();
         stuck.setUserId("user-recovery");
@@ -239,14 +271,20 @@ class OrderControllerIT {
         );
         restTemplate.postForEntity("/orders", body, Map.class);
 
-        ResponseEntity<Object[]> list = restTemplate.getForEntity("/orders", Object[].class);
+        ResponseEntity<Map> list = restTemplate.getForEntity("/orders", Map.class);
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(list.getBody()).isNotEmpty();
+        assertThat(list.getBody().get("items")).isInstanceOf(List.class);
+        assertThat((List<?>) list.getBody().get("items")).isNotEmpty();
+        assertThat(list.getBody().get("page")).isEqualTo(0);
+        assertThat(list.getBody().get("size")).isEqualTo(20);
+        assertThat((Integer) list.getBody().get("totalElements")).isGreaterThanOrEqualTo(1);
     }
 
     @Test
     void getUnknownOrderReturns404() {
         ResponseEntity<Map> response = restTemplate.getForEntity("/orders/" + UUID.randomUUID(), Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().get("error")).asString().startsWith("Order not found");
+        assertThat(response.getBody().get("status")).isEqualTo(404);
     }
 }

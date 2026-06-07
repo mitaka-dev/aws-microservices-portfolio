@@ -50,6 +50,23 @@ class UserControllerIT {
     @Test
     void getUser_unknownId_returns404() throws Exception {
         mockMvc.perform(get("/users/99999"))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("User not found"))
+            .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void listUsers_returnsPaginatedResponse() throws Exception {
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"page@example.com\",\"name\":\"Page User\"}"))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/users").param("size", "10"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items").isArray())
+            .andExpect(jsonPath("$.page").value(0))
+            .andExpect(jsonPath("$.size").value(10))
+            .andExpect(jsonPath("$.totalElements").isNumber());
     }
 }

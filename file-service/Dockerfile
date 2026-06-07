@@ -5,7 +5,8 @@ WORKDIR /build
 # Copy all POMs for layer caching
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-COPY proto-shared/pom.xml proto-shared/
+COPY proto-catalog/pom.xml proto-catalog/
+COPY proto-payment/pom.xml proto-payment/
 COPY user-service/pom.xml user-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/

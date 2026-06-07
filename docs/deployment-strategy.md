@@ -163,7 +163,7 @@ The version can be a constant in the application config, making it easy to bump 
 
 ### The Problem
 
-`order-service` calls `catalog-service` over gRPC to decrement stock when an order is confirmed (`DecrementStock` RPC). The contract is defined in `.proto` files in `proto-shared`. If the proto definition changes in a non-backward-compatible way, the two services can become incompatible during a deployment.
+`order-service` calls `catalog-service` over gRPC to decrement (and increment) stock, and calls `payment-service` over gRPC to process and refund payments. Contracts are defined in `.proto` files in `proto-catalog` and `proto-payment` respectively. If a proto definition changes in a non-backward-compatible way, the caller and server can become incompatible during a deployment.
 
 In a blue/green deployment with a coordinated multi-service rollout this is manageable, but if `catalog-service` is deployed before `order-service` (or vice versa), there is a window where the caller and the server are on different proto versions.
 
@@ -198,7 +198,7 @@ message DecrementStockRequest {
 
 **Deployment ordering for breaking changes:** If a breaking proto change is unavoidable, the deploy sequence must be: deploy new `catalog-service` first (it can handle both old and new request formats), then deploy new `order-service`. Never the reverse. Document this in the CI pipeline for any deployment that involves a proto change.
 
-**Specific to this system:** The `proto-shared` module is the single source of truth for the contract. Any PR that modifies a `.proto` file should be reviewed with the compatibility rules above as an explicit checklist item. The `DecrementStock` RPC is in the critical path of order processing — a compatibility failure here causes orders to be marked `FAILED` and the SQS message goes to the DLQ. The DLQ depth alarm will fire, making the failure observable immediately after deployment.
+**Specific to this system:** `proto-catalog` and `proto-payment` are the sources of truth for their respective contracts. Any PR that modifies a `.proto` file should be reviewed with the compatibility rules above as an explicit checklist item. `DecrementStock` and `ProcessPayment` are both in the critical path of order processing — a compatibility failure here causes orders to be marked `FAILED`. The DLQ depth alarm will fire, making the failure observable immediately after deployment.
 
 ---
 

@@ -5,6 +5,8 @@ import com.portfolio.proto.catalog.CatalogServiceGrpc;
 import com.portfolio.proto.catalog.DecrementStockRequest;
 import com.portfolio.proto.catalog.DecrementStockResponse;
 import com.portfolio.proto.catalog.GetProductRequest;
+import com.portfolio.proto.catalog.IncrementStockRequest;
+import com.portfolio.proto.catalog.IncrementStockResponse;
 import com.portfolio.proto.catalog.ProductResponse;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -34,15 +36,7 @@ public class CatalogGrpcService extends CatalogServiceGrpc.CatalogServiceImplBas
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (ResponseStatusException e) {
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                responseObserver.onError(Status.NOT_FOUND
-                    .withDescription(e.getReason())
-                    .asRuntimeException());
-            } else {
-                responseObserver.onError(Status.INTERNAL
-                    .withDescription(e.getMessage())
-                    .asRuntimeException());
-            }
+            responseObserver.onError(grpcStatus(e).asRuntimeException());
         }
     }
 
@@ -52,22 +46,34 @@ public class CatalogGrpcService extends CatalogServiceGrpc.CatalogServiceImplBas
         try {
             boolean success = catalogService.decrementStock(request.getProductId(), request.getQuantity());
             var item = catalogService.getItem(request.getProductId());
-            var response = DecrementStockResponse.newBuilder()
+            responseObserver.onNext(DecrementStockResponse.newBuilder()
                 .setSuccess(success)
                 .setRemainingStock(item.stock())
-                .build();
-            responseObserver.onNext(response);
+                .build());
             responseObserver.onCompleted();
         } catch (ResponseStatusException e) {
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                responseObserver.onError(Status.NOT_FOUND
-                    .withDescription(e.getReason())
-                    .asRuntimeException());
-            } else {
-                responseObserver.onError(Status.INTERNAL
-                    .withDescription(e.getMessage())
-                    .asRuntimeException());
-            }
+            responseObserver.onError(grpcStatus(e).asRuntimeException());
         }
+    }
+
+    @Override
+    public void incrementStock(IncrementStockRequest request,
+                               StreamObserver<IncrementStockResponse> responseObserver) {
+        try {
+            int remaining = catalogService.incrementStock(request.getProductId(), request.getQuantity());
+            responseObserver.onNext(IncrementStockResponse.newBuilder()
+                .setSuccess(true)
+                .setRemainingStock(remaining)
+                .build());
+            responseObserver.onCompleted();
+        } catch (ResponseStatusException e) {
+            responseObserver.onError(grpcStatus(e).asRuntimeException());
+        }
+    }
+
+    private Status grpcStatus(ResponseStatusException e) {
+        return e.getStatusCode() == HttpStatus.NOT_FOUND
+            ? Status.NOT_FOUND.withDescription(e.getReason())
+            : Status.INTERNAL.withDescription(e.getMessage());
     }
 }

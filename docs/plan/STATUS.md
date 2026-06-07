@@ -1,10 +1,10 @@
 # Project Status
 
 ## Current Phase
-Phase 11 — Code Review & Performance Hardening
+Final Phase — Polish and Review
 
 ## Summary
-Phase 10 complete. Grafana Cloud (SaaS free tier) integration. IAM user `portfolio-dev-grafana-cloud` added to observability module with `CloudWatchReadOnlyAccess` + `AWSXRayReadOnlyAccess` policies. Importable dashboard JSON at `docs/grafana/portfolio-dashboard.json`: 16 panels across ALB, ECS, RDS, SQS, DynamoDB, payment custom metrics, X-Ray service map and traces. Template variables auto-discover ECS service names and load balancer from CloudWatch; cluster/RDS/DynamoDB/SQS identifiers default to dev env values. Zero AWS infra cost (Grafana Cloud free tier). `tofu plan` shows 3 new IAM resources, no destructive changes.
+Phase 11 complete. Six hardening improvements applied across all 5 services: (1) `spring.threads.virtual.enabled: true` on all services — Project Loom virtual threads replace Tomcat/gRPC thread pools. (2) HikariCP tuned to max=5 connections on user/order/payment services (256 vCPU Fargate constraint). (3) `GlobalExceptionHandler` + `ErrorResponse` record added to all 4 REST services — uniform `{ "error": "...", "status": N }` error body; error-path IT tests updated. (4) Resilience4j `@CircuitBreaker` on both gRPC clients in order-service (`catalog-grpc-decrement-stock`, `payment-grpc-process`, `payment-grpc-refund`) with gRPC `withDeadlineAfter(2s)` — no `@Retry` on non-idempotent operations. (5) Flyway `V4__add_indexes.sql` in order-service: `idx_orders_user_id`, `idx_orders_status`, `idx_orders_user_id_status`, `idx_order_items_order_id`. (6) Pagination: `GET /users` (new endpoint) + `GET /orders` use Spring `Pageable` → `PagedResponse<T>{ items, page, size, totalElements }`; `GET /catalog` uses DynamoDB `ExclusiveStartKey` cursor → `CursorPageResponse<T>{ items, nextCursor }`. All 19 IT tests green.
 
 ## Completed Phases
 - Phase 0 — Local Foundation: Maven monorepo, `user-service`, Flyway, Testcontainers IT tests passing.
@@ -20,6 +20,7 @@ Phase 10 complete. Grafana Cloud (SaaS free tier) integration. IAM user `portfol
 - Phase 8 — Payment Service: 5th microservice `payment-service`, gRPC-only (port 9090, no ALB), Strategy pattern (CreditCard/PayPal/BankTransfer stubs), `payment_records` table via Flyway. order-service `POST /orders` now synchronous: payment gRPC → DecrementStock gRPC → SNS OrderConfirmed. SQS consumer removed from order-service. ECR repo `portfolio-dev-payment-service`. ecs-service module supports `enable_alb_listener = false`. Business metrics: payment.attempts/success/failure.total tagged by method. 15 IT tests green.
 - Phase 9 — Saga Pattern + Outbox: Explicit order saga (PENDING→PAID→CONFIRMED, COMPENSATING→FAILED). `RefundPayment` gRPC added to payment-service. `outbox_events` table with `OutboxPoller` SmartLifecycle (5s poll → SNS). `OrderRecoveryJob` retries stuck COMPENSATING orders every 5 min. Flyway V2+V3. 18 IT tests green.
 - Phase 10 — Grafana Cloud: IAM user `portfolio-dev-grafana-cloud` (CloudWatch + X-Ray read-only). Importable dashboard `docs/grafana/portfolio-dashboard.json` with 16 panels (ALB, ECS, RDS, SQS, DynamoDB, payment metrics, X-Ray service map + traces). Grafana Cloud SaaS free tier — zero AWS infra cost.
+- Phase 11 — Code Review & Performance Hardening: Virtual threads, HikariCP tuning, GlobalExceptionHandler, Resilience4j circuit breakers on gRPC clients, Flyway indexes (order-service V4), pagination on all 3 list endpoints. 19 IT tests green.
 
 ## Notes
 - Spring Boot 4.0.6 workarounds documented in `CLAUDE.md` — apply to every service module.

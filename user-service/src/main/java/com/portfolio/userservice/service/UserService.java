@@ -1,11 +1,13 @@
 package com.portfolio.userservice.service;
 
 import com.portfolio.userservice.dto.CreateUserRequest;
+import com.portfolio.userservice.dto.PagedResponse;
 import com.portfolio.userservice.dto.UserResponse;
 import com.portfolio.userservice.model.User;
 import com.portfolio.userservice.repository.UserRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,5 +41,15 @@ public class UserService {
         return userRepository.findById(id)
             .map(UserResponse::from)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    public PagedResponse<UserResponse> listUsers(Pageable pageable) {
+        var page = userRepository.findAll(pageable);
+        return new PagedResponse<>(
+            page.getContent().stream().map(UserResponse::from).toList(),
+            page.getNumber(),
+            page.getSize(),
+            page.getTotalElements()
+        );
     }
 }

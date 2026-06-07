@@ -1,6 +1,9 @@
 spring:
   application:
     name: order-service
+  threads:
+    virtual:
+      enabled: true
   jpa:
     open-in-view: false
     hibernate:
@@ -13,6 +16,15 @@ spring:
     exclude:
       # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.
       - io.awspring.cloud.autoconfigure.metrics.CloudWatchExportAutoConfiguration
+  datasource:
+    hikari:
+      # 256 vCPU Fargate: (2 * cores) + 1 = 5 max connections
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 3000
+      max-lifetime: 1800000
+      keepalive-time: 60000
+      validation-timeout: 2000
 
 management:
   endpoints:
@@ -23,6 +35,64 @@ management:
     health:
       show-details: always
 
+resilience4j:
+  circuitbreaker:
+    configs:
+      grpc-default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 60s
+        permitted-number-of-calls-in-half-open-state: 5
+        record-exceptions:
+          - io.grpc.StatusRuntimeException
+          - java.util.concurrent.TimeoutException
+    instances:
+      catalog-grpc-decrement-stock:
+        base-config: grpc-default
+      catalog-grpc-increment-stock:
+        base-config: grpc-default
+      payment-grpc-process:
+        base-config: grpc-default
+      payment-grpc-refund:
+        base-config: grpc-default
+
+  retry:
+    instances:
+      # processPayment is safe to retry: payment-service deduplicates on order_id (UNIQUE constraint).
+      payment-grpc-process:
+        max-attempts: 2
+        wait-duration: 200ms
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - io.grpc.StatusRuntimeException
+      # refundPayment is safe to retry: payment-service checks if already REFUNDED before writing.
+      # 3 attempts with longer wait — losing a refund is worse than a double-attempt.
+      payment-grpc-refund:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - io.grpc.StatusRuntimeException
+
+  bulkhead:
+    instances:
+      # catalog uses DynamoDB (on-demand) — 10 concurrent per task is safe.
+      catalog-grpc-decrement-stock:
+        max-concurrent-calls: 10
+        max-wait-duration: 0ms
+      # payment uses PostgreSQL pool-size=5 — bulkhead matches pool to prevent gRPC-layer queuing.
+      payment-grpc-process:
+        max-concurrent-calls: 5
+        max-wait-duration: 0ms
+      # Refund is lower-priority compensation path.
+      payment-grpc-refund:
+        max-concurrent-calls: 3
+        max-wait-duration: 0ms
+
 ---
 spring:
   config:
@@ -32,6 +102,10 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:userdb}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   cloud:
     aws:
       endpoint: ${LOCALSTACK_URL:http://localhost:4566}
@@ -58,6 +132,10 @@ spring:
       on-profile: aws
   datasource:
     url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:orderdb}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
   cloud:
     aws:
       region:

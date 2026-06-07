@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.dynamodb.model.Projection;
 import software.amazon.awssdk.services.dynamodb.model.ProjectionType;
 import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -118,14 +119,17 @@ class CatalogControllerIT {
         var body = Map.of("name", "Gadget", "category", "Tools", "price", 19.99, "stock", 50);
         restTemplate.postForEntity("/catalog", body, Map.class);
 
-        ResponseEntity<Object[]> list = restTemplate.getForEntity("/catalog", Object[].class);
+        ResponseEntity<Map> list = restTemplate.getForEntity("/catalog?size=10", Map.class);
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(list.getBody()).isNotEmpty();
+        assertThat(list.getBody().get("items")).isInstanceOf(List.class);
+        assertThat((List<?>) list.getBody().get("items")).isNotEmpty();
     }
 
     @Test
     void getUnknownItemReturns404() {
         ResponseEntity<Map> response = restTemplate.getForEntity("/catalog/nonexistent", Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().get("error")).isEqualTo("Item not found");
+        assertThat(response.getBody().get("status")).isEqualTo(404);
     }
 }

@@ -67,7 +67,7 @@
     </dependency>
     <dependency>
       <groupId>com.portfolio</groupId>
-      <artifactId>proto-shared</artifactId>
+      <artifactId>proto-payment</artifactId>
       <version>${project.version}</version>
     </dependency>
 

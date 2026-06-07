@@ -1,6 +1,9 @@
 spring:
   application:
     name: file-service
+  threads:
+    virtual:
+      enabled: true
   autoconfigure:
     exclude:
       # CloudWatchExportAutoConfiguration references StepRegistryProperties removed in SB4.

@@ -32,6 +32,6 @@ Use **AWS Cloud Map** with a private DNS namespace (`internal.local`). ECS regis
 
 **Hardcoded ALB DNS:** The internal ALB could route gRPC traffic with path-based rules. Requires the ALB to support HTTP/2 (it does, with ALPN), but adds an unnecessary layer of indirection and cost for service-to-service calls. Also means gRPC health checking and connection pooling go through ALB listener capacity.
 
-**AWS App Mesh:** Adds an Envoy proxy sidecar to each task, providing mTLS, traffic shaping, retries, circuit breaking, and distributed tracing integration. Costs ~$0.0075/Envoy-hour per task (~$0.72/day across 4 services). The right choice when you need a zero-trust network or fine-grained traffic control; overkill for four services where the VPC boundary is the trust boundary.
+**AWS App Mesh:** Adds an Envoy proxy sidecar to each task, providing mTLS, traffic shaping, retries, circuit breaking, and distributed tracing integration. Costs ~$0.0075/Envoy-hour per task (~$0.72/day across 4 services). The right choice when you need a zero-trust network or fine-grained traffic control; overkill for five services where the VPC boundary is the trust boundary.
 
 **Istio on EKS:** The most feature-rich option. Requires migrating to EKS (see ADR 001). Adds significant operational complexity in exchange for the full Istio feature set. Not appropriate for this scope.

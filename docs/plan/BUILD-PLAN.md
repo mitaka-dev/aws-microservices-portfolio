@@ -641,7 +641,7 @@ FAILED  COMPENSATING → FAILED
 ---
 
 ### Phase 11 — Code Review & Performance Hardening
-- [ ] **Not started**
+- [x] **Complete**
 
 **Goal:** Audit all five services for correctness and performance issues, then apply a focused set of improvements that demonstrate senior-level thinking: right-sized connection pools, resilience patterns, reliable event publishing, Java 25 virtual threads, proper indexing, and pagination.
 

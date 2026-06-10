@@ -1,0 +1,80 @@
+flowchart TD
+    Client([Client])
+
+    subgraph Edge["Edge"]
+        WAF[WAF\nAWS WAFv2]
+        APIGW[API Gateway\nHTTP API + JWT authorizer]
+        Cognito[Cognito User Pool\nJWT auth]
+    end
+
+    subgraph VPC["VPC  10.0.0.0/16"]
+        VPCLink[VPC Link]
+        ALB[Internal ALB]
+
+        subgraph ECS["ECS Fargate — private subnets"]
+            US[user-service\nUser management]
+            CS[catalog-service\nProduct catalog\ngRPC server :9090]
+            OS[order-service\nOrder saga + outbox\ngRPC client]
+            PS[payment-service\ngRPC-only :9090\nStrategy pattern]
+            FS[file-service\nFile handling]
+        end
+
+        CloudMap[AWS Cloud Map\ninternal.local]
+
+        subgraph Data["Data layer"]
+            RDS_U[(RDS PostgreSQL\nUser data)]
+            RDS_O[(RDS PostgreSQL\nOrder data)]
+            RDS_P[(RDS PostgreSQL\nPayment data)]
+            DDB[(DynamoDB\nCatalog data)]
+            Redis[(ElastiCache Redis\nCache + idempotency)]
+            SNS[SNS\norders-events]
+            S3[(S3\nFile storage)]
+        end
+    end
+
+    subgraph Observability["Observability"]
+        OTel[ADOT sidecar\nOTel Java agent]
+        XRay[X-Ray\nDistributed traces]
+        CW[CloudWatch\nMetrics · Logs · Alarms · Dashboard]
+        Grafana[Grafana Cloud\nDashboards]
+    end
+
+    subgraph CICD["CI / CD"]
+        GHA[GitHub Actions\nOIDC — no long-lived keys]
+        ECR[ECR\nContainer registry]
+    end
+
+    Client --> WAF
+    WAF --> APIGW
+    APIGW <--> Cognito
+    APIGW --> VPCLink --> ALB
+
+    ALB --> US
+    ALB --> CS
+    ALB --> OS
+    ALB --> FS
+
+    US --> RDS_U
+    CS --> DDB
+    CS --> Redis
+    FS --> S3
+
+    OS --> RDS_O
+    OS --> Redis
+    OS -->|outbox → SNS| SNS
+    OS -->|gRPC DecrementStock\nIncrementStock| CS
+    OS -->|gRPC ProcessPayment\nRefundPayment| PS
+
+    PS --> RDS_P
+    PS -.->|Cloud Map DNS\ncatalog-service.internal.local| CloudMap
+    OS -.->|Cloud Map DNS\npayment-service.internal.local| CloudMap
+    CloudMap -.-> CS
+    CloudMap -.-> PS
+
+    ECS --> OTel
+    OTel --> XRay
+    OTel --> CW
+    CW --> Grafana
+
+    GHA -->|build + push| ECR
+    GHA -->|deploy| ECS

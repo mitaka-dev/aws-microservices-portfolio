@@ -3,6 +3,7 @@ package com.portfolio.infra.components;
 import com.pulumi.aws.AwsFunctions;
 import com.pulumi.aws.ec2.*;
 import com.pulumi.aws.inputs.GetAvailabilityZonesArgs;
+import com.pulumi.aws.inputs.GetRegionArgs;
 import com.pulumi.core.Output;
 import com.pulumi.resources.ComponentResource;
 import com.pulumi.resources.ComponentResourceOptions;
@@ -32,6 +33,9 @@ public class NetworkComponent extends ComponentResource {
         var azs = AwsFunctions.getAvailabilityZones(GetAvailabilityZonesArgs.builder()
                 .state("available")
                 .build());
+
+        // Region lookup — used for Gateway endpoint service names
+        var region = AwsFunctions.getRegion(GetRegionArgs.builder().build());
 
         // ── VPC ───────────────────────────────────────────────────────────────
         var vpc = new Vpc(prefix + "-vpc", VpcArgs.builder()
@@ -128,6 +132,25 @@ public class NetworkComponent extends ComponentResource {
                             .routeTableId(privateRt.id())
                             .build(), opts);
         }
+
+        // ── Gateway VPC endpoints (free — no hourly charge, no ENI) ─────────
+        // S3: routes ECR image-layer pulls off NAT (ECR stores layers in S3)
+        new VpcEndpoint(prefix + "-vpce-s3", VpcEndpointArgs.builder()
+                .vpcId(vpc.id())
+                .serviceName(region.applyValue(r -> "com.amazonaws." + r.name() + ".s3"))
+                .vpcEndpointType("Gateway")
+                .routeTableIds(Output.all(privateRt.id(), publicRt.id()))
+                .tags(Map.of("Name", prefix + "-vpce-s3"))
+                .build(), opts);
+
+        // DynamoDB: routes catalog-service DynamoDB traffic off NAT
+        new VpcEndpoint(prefix + "-vpce-dynamodb", VpcEndpointArgs.builder()
+                .vpcId(vpc.id())
+                .serviceName(region.applyValue(r -> "com.amazonaws." + r.name() + ".dynamodb"))
+                .vpcEndpointType("Gateway")
+                .routeTableIds(Output.all(privateRt.id(), publicRt.id()))
+                .tags(Map.of("Name", prefix + "-vpce-dynamodb"))
+                .build(), opts);
 
         // ── Outputs ───────────────────────────────────────────────────────────
         this.vpcId = vpc.id();

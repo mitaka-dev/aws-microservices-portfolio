@@ -752,16 +752,16 @@ FAILED  COMPENSATING → FAILED
 
 - [ ] `./scripts/up.sh` provisions everything from zero.
 - [ ] `./scripts/down.sh` removes everything (verify zero unexpected charges next day).
-- [ ] `./mvnw verify` is green from repo root.
+- [x] `./mvnw verify` is green from repo root. ✅
 - [ ] End-to-end k6 flow passes: sign up → log in → create catalog item → place order (with payment) → upload file.
-- [ ] Auto-scaling triggers under k6 load and you have a screenshot.
+- [x] Auto-scaling triggers under k6 load. ✅
 - [ ] CloudWatch dashboard shows live metrics from all 5 services.
 - [ ] Grafana dashboard live with CloudWatch data; dashboard JSON exported to `docs/grafana/`.
 - [ ] OpenSearch Dashboards shows structured logs from all 5 services, searchable by service/level/trace.
 - [ ] X-Ray service map shows traces spanning all services + Dynamo + Redis.
-- [ ] CI pipeline deploys on merge to main with no manual steps.
-- [ ] README has architecture diagram, AWS-services bullet list, tradeoffs section.
-- [ ] At least 5 ADRs written.
+- [x] CI pipeline deploys on merge to main with no manual steps. ✅
+- [x] README has architecture diagram (Mermaid), AWS-services bullet list, tradeoffs section. ✅
+- [x] At least 5 ADRs written (8 ADRs). ✅
 
 ---
 

@@ -10,7 +10,57 @@ Five production-grade microservices on AWS ECS Fargate: user management, product
 
 ## Architecture
 
-![Architecture diagram](docs/diagrams/architecture.png)
+```mermaid
+flowchart TD
+    Client([Client])
+
+    subgraph Edge["Edge"]
+        WAF[WAF]
+        APIGW[API Gateway\nHTTP API + JWT authorizer]
+        Cognito[Cognito User Pool]
+    end
+
+    subgraph VPC["VPC  —  private subnets"]
+        ALB[Internal ALB]
+        subgraph ECS["ECS Fargate"]
+            US[user-service]
+            CS[catalog-service\ngRPC :9090]
+            OS[order-service]
+            PS[payment-service\ngRPC :9090]
+            FS[file-service]
+        end
+        subgraph Data["Data"]
+            RDS_U[(RDS\nuser)]
+            RDS_O[(RDS\norder)]
+            RDS_P[(RDS\npayment)]
+            DDB[(DynamoDB\ncatalog)]
+            Redis[(ElastiCache\nRedis)]
+            SNS[SNS]
+            S3[(S3)]
+        end
+    end
+
+    subgraph Ops["Observability / CI"]
+        CW[CloudWatch\nX-Ray · Metrics · Logs]
+        GHA[GitHub Actions\nOIDC]
+        ECR[ECR]
+    end
+
+    Client --> WAF --> APIGW
+    APIGW <--> Cognito
+    APIGW --> ALB
+    ALB --> US & CS & OS & FS
+    US --> RDS_U
+    CS --> DDB --> Redis
+    OS --> RDS_O
+    OS -->|outbox → SNS| SNS
+    OS -->|gRPC| CS
+    OS -->|gRPC| PS
+    PS --> RDS_P
+    FS --> S3
+    ECS --> CW
+    GHA --> ECR --> ECS
+```
 
 ## AWS Services Used
 
@@ -66,9 +116,6 @@ docker compose up -d
 
 # Full end-to-end against deployed AWS
 ./tests/e2e-aws.sh
-
-# k6 load test against deployed AWS
-k6 run -e BASE_URL="$BASE" -e TOKEN="$TOKEN" tests/load/smoke.js
 ```
 
 ## Cost
@@ -116,23 +163,6 @@ aws-microservices-portfolio/
     └── diagrams/          Architecture diagram source (.mmd)
 ```
 
-## Running Tests
-
-```bash
-# Unit + integration tests (Testcontainers spins up Postgres, Redis, LocalStack)
-./mvnw verify
-
-# Single-service build
-./mvnw -pl user-service -am verify
-
-# Local end-to-end
-docker compose up -d
-./tests/e2e-local.sh
-
-# AWS end-to-end (requires running stack)
-./tests/e2e-aws.sh
-```
-
 ## Load Testing
 
 `scripts/run-load-test.sh` resolves the API endpoint and Cognito token automatically from OpenTofu state, then hands off to k6.
@@ -153,7 +183,7 @@ docker compose up -d
 
 ### What `autoscale` demonstrates
 
-The test runs seven stages against all four services simultaneously:
+The test runs seven stages against all five services simultaneously:
 
 | Stage | VUs | Duration | What to watch in CloudWatch |
 |---|---|---|---|
@@ -170,3 +200,19 @@ Auto-scaling is configured with a 50 req/min/task ALB target and 70 % CPU target
 ## Architecture Decisions
 
 See [`docs/decisions/`](docs/decisions/) for the full ADR set covering: Fargate vs EC2, API Gateway + ALB two-tier routing, Cloud Map vs service mesh, SNS/SQS vs RabbitMQ, monorepo structure, Maven multi-module, Cognito vs self-issued JWT, and DynamoDB cursor pagination + HikariCP sizing.
+
+## What I'd Change for Production
+
+Honest tradeoffs made for portfolio simplicity — and what a production system at scale would look like instead:
+
+| Current choice | Production alternative | Why |
+|---|---|---|
+| Single NAT Gateway (one AZ) | NAT Gateway per AZ | Single NAT is a cross-AZ availability risk; per-AZ eliminates that and cuts cross-AZ data transfer charges |
+| RDS `db.t4g.micro`, single-AZ | Aurora Serverless v2, Multi-AZ | Aurora scales capacity in 0.5 ACU increments, costs zero when idle, and provides automatic failover |
+| ECS Fargate | EKS + Karpenter | Kubernetes gives richer scheduling, KEDA-based scaling, and a larger ecosystem; Karpenter replaces the managed node group with just-in-time provisioning |
+| Cloud Map DNS for gRPC | Service mesh (AWS App Mesh or Istio on EKS) | mTLS between services, circuit breaking and retries at the network layer, traffic shifting for canary deploys |
+| Single-region (eu-west-1) | Multi-region with Route 53 failover | Active-passive failover for RTO < 1 min; DynamoDB Global Tables for catalog; Aurora Global Database for orders |
+| Monorepo, shared proto modules | Polyrepo per service, proto artifacts in Maven registry | Per-team ownership, independent release cycles, no reactor coupling — the right model once more than one team is involved |
+| `payment-service` via Cloud Map only | payment-service behind its own internal ALB | Enables ALB-based health checks, request-count autoscaling, and blue/green deploys for the payment path |
+| ElastiCache single node | ElastiCache with replica + Multi-AZ | Replica provides read scaling; Multi-AZ enables automatic failover if the primary node fails |
+| WAF managed rules only | WAF + custom rate-limiting rules per route | Managed rules cover OWASP top 10; custom rules add per-user rate limiting on `/orders` and `/auth` to prevent abuse |

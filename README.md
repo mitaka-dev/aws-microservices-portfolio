@@ -10,57 +10,7 @@ Five production-grade microservices on AWS ECS Fargate: user management, product
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    Client([Client])
-
-    subgraph Edge["Edge"]
-        WAF[WAF]
-        APIGW[API Gateway\nHTTP API + JWT authorizer]
-        Cognito[Cognito User Pool]
-    end
-
-    subgraph VPC["VPC  —  private subnets"]
-        ALB[Internal ALB]
-        subgraph ECS["ECS Fargate"]
-            US[user-service]
-            CS[catalog-service\ngRPC :9090]
-            OS[order-service]
-            PS[payment-service\ngRPC :9090]
-            FS[file-service]
-        end
-        subgraph Data["Data"]
-            RDS_U[(RDS\nuser)]
-            RDS_O[(RDS\norder)]
-            RDS_P[(RDS\npayment)]
-            DDB[(DynamoDB\ncatalog)]
-            Redis[(ElastiCache\nRedis)]
-            SNS[SNS]
-            S3[(S3)]
-        end
-    end
-
-    subgraph Ops["Observability / CI"]
-        CW[CloudWatch\nX-Ray · Metrics · Logs]
-        GHA[GitHub Actions\nOIDC]
-        ECR[ECR]
-    end
-
-    Client --> WAF --> APIGW
-    APIGW <--> Cognito
-    APIGW --> ALB
-    ALB --> US & CS & OS & FS
-    US --> RDS_U
-    CS --> DDB --> Redis
-    OS --> RDS_O
-    OS -->|outbox → SNS| SNS
-    OS -->|gRPC| CS
-    OS -->|gRPC| PS
-    PS --> RDS_P
-    FS --> S3
-    ECS --> CW
-    GHA --> ECR --> ECS
-```
+> Architecture diagram coming soon.
 
 ## AWS Services Used
 

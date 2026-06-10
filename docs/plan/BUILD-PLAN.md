@@ -256,8 +256,7 @@ payment-service  ──►  proto-shared
 **Goal:** a VPC and a place to push images. Nothing running yet.
 
 **Tasks:**
-1. `infra/modules/network`: VPC with 2 public subnets, 2 private subnets, **single NAT Gateway** (cost optimization, document in README), Internet Gateway, route tables.
-   - **Cheaper alternative:** zero NAT, use **VPC interface endpoints** for ECR (api + dkr), Secrets Manager, CloudWatch Logs, SNS, SQS, plus a **gateway endpoint** for S3 and DynamoDB. Document this choice as a deliberate cost optimization.
+1. `infra/modules/network`: VPC with 2 public subnets, 2 private subnets, **single NAT Gateway**, Internet Gateway, route tables. **Free S3 and DynamoDB Gateway endpoints** added to keep ECR image-layer pulls and DynamoDB traffic off the NAT data-processing bill.
 2. `infra/modules/ecr`: 4 repositories (`user-service`, `catalog-service`, `order-service`, `file-service`), image scanning enabled, lifecycle policy "keep last 10 images".
 3. `infra/envs/dev/backend.tf`: S3 backend + DynamoDB state lock table (bootstrap these two manually first, then everything else via OpenTofu).
 4. `infra/envs/dev/main.tf`: wire `network` + `ecr` modules.

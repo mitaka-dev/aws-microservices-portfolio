@@ -15,7 +15,7 @@ Five production-grade microservices on AWS ECS Fargate: user management, product
 ## AWS Services Used
 
 **Compute:** ECS Fargate  
-**Networking:** VPC, API Gateway (HTTP API), Application Load Balancer, VPC Link, NAT Gateway, AWS Cloud Map  
+**Networking:** VPC, API Gateway (HTTP API), Application Load Balancer, VPC Link, NAT Gateway, VPC Gateway Endpoints (S3 + DynamoDB), AWS Cloud Map  
 **Auth:** Cognito User Pool, JWT authorizer, IAM OIDC provider  
 **Storage:** RDS PostgreSQL, DynamoDB (on-demand), ElastiCache Redis, S3  
 **Messaging:** SNS, SQS (with DLQ)  
@@ -75,7 +75,7 @@ k6 run -e BASE_URL="$BASE" -e TOKEN="$TOKEN" tests/load/smoke.js
 
 | State | ~Cost | Main drivers |
 |---|---|---|
-| **Running** | ~$4/day | NAT Gateway $1.08/day · RDS t4g.micro $0.38/day · ElastiCache t4g.micro $0.38/day · ALB $0.19/day · ECS tasks ~$0.10/day |
+| **Running** | ~$4/day | NAT Gateway $1.08/day · RDS t4g.micro $0.38/day · ElastiCache t4g.micro $0.38/day · ALB $0.19/day · ECS tasks ~$0.10/day · S3+DynamoDB Gateway endpoints free |
 | **Torn down** | ~$0.02/day | S3 state bucket + ECR image storage |
 
 > Auto-scaling includes a scheduled scale-to-zero at 22:00 UTC and scale-up at 08:00 UTC to cut cost during inactivity.

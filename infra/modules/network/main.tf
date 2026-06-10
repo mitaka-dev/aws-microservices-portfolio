@@ -94,3 +94,26 @@ resource "aws_route_table_association" "private" {
   subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
 }
+
+data "aws_region" "current" {}
+
+# S3 Gateway endpoint — free; ECR stores image layers in S3, so every task start
+# and every deploy pulls through here instead of the NAT Gateway.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id, aws_route_table.public.id]
+
+  tags = { Name = "${local.name_prefix}-vpce-s3" }
+}
+
+# DynamoDB Gateway endpoint — free; catalog-service hits DynamoDB on every request.
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = aws_vpc.this.id
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id, aws_route_table.public.id]
+
+  tags = { Name = "${local.name_prefix}-vpce-dynamodb" }
+}

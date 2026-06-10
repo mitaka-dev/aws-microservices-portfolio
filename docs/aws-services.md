@@ -28,7 +28,7 @@ Manages user identity. Provides a hosted sign-in/sign-up UI, issues JWT access t
 ### VPC (Virtual Private Cloud)
 An isolated private network (`10.0.0.0/16`) that contains everything except API Gateway. All compute, databases, and caches run inside the VPC. Nothing inside is reachable from the internet unless explicitly exposed.
 
-**Contains:** subnets, NAT Gateway, ALB, ECS tasks, RDS, ElastiCache, Cloud Map.
+**Contains:** subnets, NAT Gateway, VPC Gateway endpoints, ALB, ECS tasks, RDS, ElastiCache, Cloud Map.
 
 ### Subnets
 The VPC is divided into four subnets across two availability zones:
@@ -36,7 +36,7 @@ The VPC is divided into four subnets across two availability zones:
 - **2 private subnets** — hold ECS Fargate tasks, RDS, and ElastiCache. No direct internet access; outbound traffic routes through the NAT Gateway.
 
 ### NAT Gateway + Elastic IP
-Allows ECS tasks in private subnets to reach the internet for outbound calls — pulling container images from ECR, sending metrics to CloudWatch, calling AWS APIs. Inbound connections from the internet cannot reach private subnets through the NAT. One NAT Gateway in one public subnet (cost vs. simplicity trade-off; a production system would have one per AZ for HA).
+Allows ECS tasks in private subnets to reach the internet for outbound calls — sending metrics to CloudWatch, calling Cognito, reaching ECR's control-plane API. Inbound connections from the internet cannot reach private subnets through the NAT. One NAT Gateway in one public subnet (cost vs. simplicity trade-off; a production system would have one per AZ for HA).
 
 **Why both API Gateway and NAT Gateway?** They handle traffic in opposite directions and have nothing to do with each other:
 
@@ -48,6 +48,16 @@ ECS tasks → NAT Gateway → Internet Gateway → AWS APIs  (outbound calls)
 API Gateway is the entry point for client traffic coming in. NAT Gateway is the exit for AWS SDK calls going out. Remove API Gateway and there is no way to call the services. Remove NAT Gateway and ECS tasks cannot reach ECR or CloudWatch and will fail to start.
 
 **Connected to:** private subnet route tables, internet gateway.
+
+### VPC Gateway Endpoints — S3 and DynamoDB
+Two free Gateway endpoints inject direct routes into the private route table so that S3 and DynamoDB traffic never touches the NAT Gateway.
+
+- **S3 endpoint** — ECR stores image layers in S3. Every ECS task start and every deploy pulls those layers. Without this endpoint, all that data is billed at $0.045/GB through NAT.
+- **DynamoDB endpoint** — catalog-service queries DynamoDB on every request. With this endpoint, all DynamoDB traffic bypasses NAT entirely.
+
+Gateway endpoints have no hourly charge and no data-processing charge — they work by adding a prefix list route to the route table, not by creating a network interface. They are the exception to the "no VPC interface endpoints" rule; interface endpoints (ECR PrivateLink, Secrets Manager, etc.) still cost $0.01/hour each and are not used.
+
+**Connected to:** private and public route tables.
 
 ### Internet Gateway
 Attaches the VPC to the internet. The NAT Gateway and ALB use it for internet-bound traffic. Without it, the VPC is completely isolated.

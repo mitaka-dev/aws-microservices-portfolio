@@ -100,6 +100,7 @@ services:
       DB_NAME: orderdb
       LOCALSTACK_URL: http://localstack:4566
       CATALOG_GRPC_HOST: catalog-service
+      PAYMENT_GRPC_HOST: payment-service
       REDIS_HOST: redis
     depends_on:
       postgres:
@@ -108,7 +109,29 @@ services:
         condition: service_healthy
       catalog-service:
         condition: service_healthy
+      payment-service:
+        condition: service_healthy
       redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "8085:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DB_HOST: postgres
+      DB_NAME: paymentdb
+    depends_on:
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
